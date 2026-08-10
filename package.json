@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "prestart": "node --experimental-strip-types --env-file-if-exists=.env src/deploy-commands.ts || exit 0",
     "start": "node --experimental-strip-types --env-file-if-exists=.env src/index.ts",
     "start:test": "node --experimental-strip-types --env-file-if-exists=.env.test src/index.ts",
     "send": "node --experimental-strip-types --env-file-if-exists=.env src/send.ts",
