@@ -18,10 +18,12 @@ type MapPeriod = {
   next: MapWindow;
 };
 
+// Not every mode is guaranteed present on a given response — e.g. wildcard
+// isn't always active.
 export type MapRotationData = {
-  battle_royale: MapPeriod;
-  ranked: MapPeriod;
-  wildcard: MapPeriod;
+  battle_royale?: MapPeriod;
+  ranked?: MapPeriod;
+  wildcard?: MapPeriod;
 };
 
 export async function fetchMapRotation(): Promise<MapRotationData> {
@@ -175,17 +177,23 @@ async function drawNextStrip(ctx: SKRSContext2D, y: number, next: MapWindow): Pr
   ctx.fillRect(0, y, CARD_W, STRIP_H);
 
   const pad = 20;
+  const midY = y + STRIP_H / 2;
+
   ctx.fillStyle = '#8fa0b3';
-  ctx.font = '16px "Bebas Neue"';
-  ctx.fillText('UP NEXT', pad, y + 20);
+  ctx.font = '22px "Bebas Neue"';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('UP NEXT', pad, midY);
+  const labelWidth = ctx.measureText('UP NEXT').width;
+  ctx.textBaseline = 'alphabetic';
 
+  const groupX = pad + labelWidth + 22;
   ctx.fillStyle = '#ffffff';
-  ctx.font = '36px "Bebas Neue"';
-  ctx.fillText(next.map, pad, y + 58);
+  ctx.font = '32px "Bebas Neue"';
+  ctx.fillText(next.map, groupX, midY - 4);
 
-  ctx.fillStyle = '#aab2bd';
-  ctx.font = '20px "Bebas Neue"';
-  ctx.fillText(`${formatClock(next.start)} - ${formatClock(next.end)}`, pad, y + STRIP_H - pad + 4);
+  ctx.fillStyle = '#d5dbe3';
+  ctx.font = '28px "Bebas Neue"';
+  ctx.fillText(`${formatClock(next.start)} - ${formatClock(next.end)}`, groupX, midY + 28);
 }
 
 async function renderModeCard(label: string, period: MapPeriod, nowMs: number): Promise<Buffer> {
@@ -224,12 +232,12 @@ async function renderModeCard(label: string, period: MapPeriod, nowMs: number): 
   ctx.font = '80px "Bebas Neue"';
   ctx.fillText(period.current.map, textX, heroY + HERO_H / 2 + 8);
 
-  ctx.fillStyle = '#c9c9c9';
-  ctx.font = '26px "Bebas Neue"';
+  ctx.fillStyle = '#d5dbe3';
+  ctx.font = '36px "Bebas Neue"';
   ctx.fillText(
     `From ${formatClock(period.current.start)} to ${formatClock(period.current.end)}`,
     textX,
-    heroY + HERO_H / 2 + 42,
+    heroY + HERO_H / 2 + 48,
   );
 
   drawRing(ctx, CARD_W - 115, heroY + HERO_H / 2, 74, period.current.start, period.current.end, nowMs);
@@ -251,11 +259,19 @@ export async function buildMapRotationMessage(data: MapRotationData, nowMs: numb
   const files: AttachmentBuilder[] = [];
 
   for (const mode of modes) {
-    const image = await renderModeCard(modeLabels[mode], data[mode], nowMs);
+    // Not every mode is always present — e.g. wildcard isn't always active.
+    const period = data[mode];
+    if (!period?.current || !period.next) continue;
+
+    const image = await renderModeCard(modeLabels[mode], period, nowMs);
 
     const filename = `map-rotation-${mode}.png`;
     files.push(new AttachmentBuilder(image, { name: filename }));
     embeds.push(new EmbedBuilder().setColor(mapRotationEmbedColor).setImage(`attachment://${filename}`));
+  }
+
+  if (embeds.length === 0) {
+    throw new Error('Apex status API returned no usable rotation data.');
   }
 
   return { embeds, files };
