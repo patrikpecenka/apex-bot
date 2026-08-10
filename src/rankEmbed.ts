@@ -8,7 +8,7 @@ import {
 } from 'discord.js';
 import { seasonRoleName, selfAssignTiers } from './seasonRoles.ts';
 import { setRankMessage } from './rankMessageStore.ts';
-import { rankCheckChannelId } from './config.ts';
+import { defaultChannels } from './config.ts';
 
 export type PruneSummary = { season: number; tiers: string[] } | null;
 
@@ -50,7 +50,7 @@ export function rankTexts(
 ): { title: string; description: string } {
   // Links the channel when RANK_CHECK_CHANNEL_ID is configured, otherwise falls
   // back to plain text rather than pointing at the wrong channel.
-  const rankCheck = rankCheckChannelId ? `<#${rankCheckChannelId}>` : '#rank-check';
+  const rankCheck = defaultChannels.rankCheck ? `<#${defaultChannels.rankCheck}>` : '#rank-check';
 
   const lines = [
     `Vyber svůj aktuální rank pro season ${season}`,
@@ -72,6 +72,33 @@ export function buildRankEmbed(season: number, prune: PruneSummary): EmbedBuilde
     .setTitle(title)
     .setDescription(description)
     .setColor(rankEmbedColor);
+}
+
+export const seasonStartEmbedColor = 0x57f287;
+
+/** Posted to the rank-check room announcing that verification is open for the new season. */
+export function buildSeasonStartEmbed(season: number): EmbedBuilder {
+  return new EmbedBuilder()
+    .setTitle(`↓ ↓ ↓  -----  Season ${season} starts here  -----  ↓ ↓ ↓`)
+    .setDescription(
+      [
+        'Room pouze pro ověření APEX PREDATOR A MASTER',
+        '',
+        `Ostatní ranky můžete přiřadit svépomocí v roomce <#${defaultChannels.rankPicker}>`,
+      ].join('\n'),
+    )
+    .setColor(seasonStartEmbedColor);
+}
+
+/** Posts the season-start notice to the rank-check room. */
+export async function postSeasonStartNotice(
+  channel: TextBasedChannel,
+  season: number,
+): Promise<Message> {
+  if (!channel.isSendable()) {
+    throw new Error('I cannot post in that channel.');
+  }
+  return channel.send({ embeds: [buildSeasonStartEmbed(season)] });
 }
 
 /**

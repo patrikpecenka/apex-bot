@@ -16,9 +16,14 @@ import {
   seasonRolePermissions,
   seasonTiers,
 } from '../seasonRoles.ts';
-import { closeRankMessage, postRankMessage, type PruneSummary } from '../rankEmbed.ts';
+import {
+  closeRankMessage,
+  postRankMessage,
+  postSeasonStartNotice,
+  type PruneSummary,
+} from '../rankEmbed.ts';
 import { getRankMessage } from '../rankMessageStore.ts';
-import { rankChannelId, rankPickerEnabled } from '../config.ts';
+import { defaultChannels, rankPickerEnabled } from '../config.ts';
 import {
   deletableRoles,
   deleteRoles,
@@ -42,6 +47,12 @@ export const data = new SlashCommandBuilder()
     option
       .setName('channel')
       .setDescription('Where to post the rank picker (defaults to the rank channel)')
+      .addChannelTypes(ChannelType.GuildText),
+  )
+  .addChannelOption((option) =>
+    option
+      .setName('rank_check_channel')
+      .setDescription('Where to post the season-start notice (defaults to the rank-check room)')
       .addChannelTypes(ChannelType.GuildText),
   )
   .addBooleanOption((option) =>
@@ -180,11 +191,12 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     // Lowest rank first, each one slotted directly above the previous, so the
     // finished stack ends with Apex Predator on top.
     for (const [index, tier] of [...seasonTiers].reverse().entries()) {
+      const isTopTier = index === seasonTiers.length - 1;
       const role = await guild.roles.create({
         name: seasonRoleName(season, tier.name),
         colors: { primaryColor: tier.color },
         permissions: seasonRolePermissions,
-        hoist: false,
+        hoist: isTopTier,
         mentionable: false,
         position: anchorPosition + 1 + index,
         reason: `Season ${season} created by ${interaction.user.tag}`,
@@ -199,6 +211,12 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     await guild.roles.setPositions(
       created.map((role, index) => ({ role, position: base + 1 + index })),
     );
+
+    // The previous season's top role was the one hoisted; only the newest
+    // season's top role should stand out in the member list now.
+    if (anchor?.hoist) {
+      await anchor.setHoist(false, `Season ${season} replaces it as current`);
+    }
   } catch (error) {
     console.error('Failed to create season roles:', error);
     await interaction.editReply(
@@ -213,8 +231,8 @@ export async function execute(interaction: ChatInputCommandInteraction) {
   if (rankPickerEnabled) {
     // Defaults to the configured rank channel, then to wherever the command was
     // run, so a server that doesn't have that channel still gets its picker.
-    const configured = rankChannelId
-      ? await guild.channels.fetch(rankChannelId).catch(() => null)
+    const configured = defaultChannels.rankPicker
+      ? await guild.channels.fetch(defaultChannels.rankPicker).catch(() => null)
       : null;
     const targetChannel =
       interaction.options.getChannel('channel') ?? configured ?? interaction.channel;
@@ -243,6 +261,24 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     }
   }
 
+  let seasonStartNote = '';
+  const configuredRankCheck = defaultChannels.rankCheck
+    ? await guild.channels.fetch(defaultChannels.rankCheck).catch(() => null)
+    : null;
+  const rankCheckChannel =
+    interaction.options.getChannel('rank_check_channel') ?? configuredRankCheck;
+  if (rankCheckChannel) {
+    try {
+      const posted = await postSeasonStartNotice(rankCheckChannel as TextBasedChannel, season);
+      seasonStartNote = `\n\nSeason-start notice posted: ${posted.url}`;
+    } catch (error) {
+      console.error('Failed to post the season-start notice:', error);
+      seasonStartNote = `\n\nPosting the season-start notice to the rank-check room failed: ${
+        error instanceof Error ? error.message : String(error)
+      }`;
+    }
+  }
+
   const listing = seasonTiers
     .map((tier) => `<@&${created.find((role) => role.name.endsWith(tier.name))?.id}>`)
     .join('\n');
@@ -250,6 +286,6 @@ export async function execute(interaction: ChatInputCommandInteraction) {
   await interaction.editReply(
     `Created **Season ${season}** — ${seasonTiers.length} roles, placed above ${
       anchor ? `Season ${parseSeasonNumber(anchor.name)}` : 'everything else'
-    }:\n${listing}${pruneNote}${embedNote}`,
+    }:\n${listing}${pruneNote}${embedNote}${seasonStartNote}`,
   );
 }

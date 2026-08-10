@@ -5,9 +5,11 @@
   "type": "module",
   "scripts": {
     "start": "node --experimental-strip-types --env-file-if-exists=.env src/index.ts",
+    "start:test": "node --experimental-strip-types --env-file-if-exists=.env.test src/index.ts",
     "send": "node --experimental-strip-types --env-file-if-exists=.env src/send.ts",
     "diag": "node --experimental-strip-types --env-file-if-exists=.env src/diag.ts",
     "deploy": "node --experimental-strip-types --env-file-if-exists=.env src/deploy-commands.ts",
+    "deploy:test": "node --experimental-strip-types --env-file-if-exists=.env.test src/deploy-commands.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

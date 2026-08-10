@@ -15,17 +15,21 @@ function required(name: string): string {
 }
 
 export const token = required('DISCORD_TOKEN');
-export const channelId = process.env.CHANNEL_ID ?? '';
-
-/** Channel the rank embed points people at for Master/Apex Predator proof. */
-export const rankCheckChannelId = process.env.RANK_CHECK_CHANNEL_ID ?? '';
 
 /**
- * Where /season posts the rank picker when the command is run without the
- * `channel` option. Falls back to the channel the command was used in if this
- * one doesn't exist on the server.
+ * Default channel IDs for each feature, one place to look when wiring up
+ * something new. Each can be overridden via its env var.
  */
-export const rankChannelId = process.env.RANK_CHANNEL_ID ?? '547456557768507392';
+export const defaultChannels = {
+  /** Where `npm run send` / `npm run diag` post when no channel is given. */
+  general: process.env.CHANNEL_ID ?? '',
+
+  /** Where /season posts the rank picker when run without the `channel` option. */
+  rankPicker: process.env.RANK_CHANNEL_ID ?? '547456557768507392',
+
+  /** Linked from the rank embed for Master / Apex Predator proof. */
+  rankCheck: process.env.RANK_CHECK_CHANNEL_ID ?? '603672062875140106',
+};
 
 /**
  * Master switch for the self-assign rank picker. Off for now: /season only

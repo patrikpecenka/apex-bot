@@ -64,25 +64,29 @@ async function handle(
       return;
     }
 
-    // One rank at a time: drop the other tiers from this same season first.
+    // One rank at a time: swap the other tiers from this same season for the
+    // picked one in a single roles.set() call, so it's one API round-trip
+    // instead of a remove-then-add pair (which is what made the old rank
+    // visibly linger).
     const others = Object.values(entry.roles).filter((id) => id !== roleId);
-    const toRemove = others.filter((id) => member.roles.cache.has(id));
-    if (toRemove.length > 0) {
-      await member.roles.remove(toRemove, `Switching rank for season ${entry.season}`);
-    }
+    const hadOthers = others.some((id) => member.roles.cache.has(id));
+    const hadRole = member.roles.cache.has(roleId);
 
-    if (!member.roles.cache.has(roleId)) {
-      await member.roles.add(roleId, `Picked rank for season ${entry.season}`);
+    if (hadOthers || !hadRole) {
+      const nextRoles = new Set(member.roles.cache.keys());
+      for (const id of others) nextRoles.delete(id);
+      nextRoles.add(roleId);
+      await member.roles.set([...nextRoles], `Picked rank for season ${entry.season}`);
     }
 
     // Clear their now-stale reactions so the message matches their actual role.
     // Each removal fires a remove event, but those roles are already gone.
     const message = reaction.message.partial ? await reaction.message.fetch() : reaction.message;
-    for (const [, other] of message.reactions.cache) {
-      if (other.emoji.id === emojiId) continue;
-      if (!other.emoji.id || !entry.roles[other.emoji.id]) continue;
-      await other.users.remove(user.id).catch(() => {});
-    }
+    await Promise.all(
+      [...message.reactions.cache.values()]
+        .filter((other) => other.emoji.id !== emojiId && other.emoji.id && entry.roles[other.emoji.id])
+        .map((other) => other.users.remove(user.id).catch(() => {})),
+    );
   } catch (error) {
     console.error('Reaction role handling failed:', error);
   }

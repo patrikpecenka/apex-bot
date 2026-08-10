@@ -6,6 +6,7 @@
 
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 export type RankMessage = {
   season: number;
@@ -18,7 +19,7 @@ export type RankMessage = {
 type StoreShape = Record<string, RankMessage>;
 
 const storePath = join(
-  dirname(new URL(import.meta.url).pathname),
+  dirname(fileURLToPath(import.meta.url)),
   '..',
   'data',
   'rankMessages.json',

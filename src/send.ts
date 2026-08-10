@@ -6,9 +6,9 @@
  */
 
 import { Client, GatewayIntentBits } from 'discord.js';
-import { channelId as defaultChannelId, token } from './config.ts';
+import { defaultChannels, token } from './config.ts';
 
-const [content = 'Test message from the bot', targetId = defaultChannelId] =
+const [content = 'Test message from the bot', targetId = defaultChannels.general] =
   process.argv.slice(2);
 
 if (!targetId) {
