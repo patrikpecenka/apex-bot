@@ -46,7 +46,7 @@ export const data = new SlashCommandBuilder()
   )
   .addChannelOption((option) =>
     option
-      .setName('channel')
+      .setName('role_picker_channel')
       .setDescription('Where to post the rank picker (defaults to the rank channel)')
       .addChannelTypes(ChannelType.GuildText),
   )
@@ -232,7 +232,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       ? await guild.channels.fetch(defaultChannels.rankPicker).catch(() => null)
       : null;
     const targetChannel =
-      interaction.options.getChannel('channel') ?? configured ?? interaction.channel;
+      interaction.options.getChannel('role_picker_channel') ?? configured ?? interaction.channel;
     const ping = interaction.options.getBoolean('ping') ?? true;
 
     // Retire the previous season's picker before the new one goes up, so there is
