@@ -3,6 +3,8 @@ import { rankPickerEnabled, token } from './config.ts';
 import { commandsByName } from './commands/registry.ts';
 import { registerReactionRoles } from './reactionRoles.ts';
 import { registerCommandsToGuild } from './commandDeploy.ts';
+import { buildMapRotationMessage, fetchMapRotation } from './mapRotation.ts';
+import { allMapRotationMessages, clearMapRotationMessage } from './mapRotationStore.ts';
 
 // Guilds is enough to see servers and their channels. Reading message text
 // would additionally need the privileged MessageContent intent, which has to be
@@ -16,12 +18,47 @@ const client = new Client({
 
 if (rankPickerEnabled) registerReactionRoles(client);
 
+// Every minute: the countdown ring needs to visibly tick down, so unlike a
+// static time range this has to re-render regardless of whether the map
+// itself changed. Minute precision is enough for the ring, so no need to run
+// this any more often than that.
+async function refreshMapRotations(): Promise<void> {
+  const entries = Object.entries(await allMapRotationMessages());
+  if (entries.length === 0) return;
+
+  let rotation;
+  try {
+    rotation = await fetchMapRotation();
+  } catch (error) {
+    console.error('Failed to fetch map rotation:', error);
+    return;
+  }
+
+  const rendered = await buildMapRotationMessage(rotation, Date.now());
+
+  for (const [guildId, { channelId, messageId }] of entries) {
+    const channel = await client.channels.fetch(channelId).catch(() => null);
+    const message = channel?.isTextBased()
+      ? await channel.messages.fetch(messageId).catch(() => null)
+      : null;
+    if (!message) {
+      await clearMapRotationMessage(guildId);
+      continue;
+    }
+
+    await message.edit(rendered).catch(() => {});
+  }
+}
+
 client.once(Events.ClientReady, async (readyClient) => {
   console.log(`Logged in as ${readyClient.user.tag}`);
   console.log(`In ${readyClient.guilds.cache.size} server(s):`);
   for (const guild of readyClient.guilds.cache.values()) {
     console.log(`  - ${guild.name} (${guild.id})`);
   }
+
+  setInterval(() => void refreshMapRotations(), 60_000);
+  void refreshMapRotations();
 });
 
 client.on(Events.InteractionCreate, async (interaction) => {

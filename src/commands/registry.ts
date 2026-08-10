@@ -1,6 +1,7 @@
 import type { ChatInputCommandInteraction, SlashCommandBuilder } from 'discord.js';
 import * as season from './season.ts';
 import * as deleteSeason from './deleteSeason.ts';
+import * as mapRotation from './mapRotation.ts';
 
 export type Command = {
   // Structural, so both plain-option and subcommand builders fit.
@@ -9,7 +10,7 @@ export type Command = {
 };
 
 /** Add new commands here — both the client and the deploy script read this. */
-export const commands: Command[] = [season, deleteSeason];
+export const commands: Command[] = [season, deleteSeason, mapRotation];
 
 export const commandsByName = new Map(
   commands.map((command) => [command.data.name, command]),

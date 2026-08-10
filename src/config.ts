@@ -37,3 +37,6 @@ export const defaultChannels = {
  * Flip back to true (or set RANK_PICKER=on) to re-enable it.
  */
 export const rankPickerEnabled = process.env.RANK_PICKER === 'on';
+
+/** Free key from https://api.mozambiquehe.re/getkey — powers /maprotation. */
+export const apexApiKey = process.env.APEX_API_KEY ?? '';
