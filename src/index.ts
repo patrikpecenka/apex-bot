@@ -2,6 +2,7 @@ import { Client, Events, GatewayIntentBits, MessageFlags, Partials } from 'disco
 import { rankPickerEnabled, token } from './config.ts';
 import { commandsByName } from './commands/registry.ts';
 import { registerReactionRoles } from './reactionRoles.ts';
+import { registerCommandsToGuild } from './commandDeploy.ts';
 
 // Guilds is enough to see servers and their channels. Reading message text
 // would additionally need the privileged MessageContent intent, which has to be
@@ -42,6 +43,17 @@ client.on(Events.InteractionCreate, async (interaction) => {
     } else {
       await interaction.reply(message).catch(() => {});
     }
+  }
+});
+
+// A server that adds the bot gets commands right away, rather than waiting
+// for the next restart's deploy pass.
+client.on(Events.GuildCreate, async (guild) => {
+  try {
+    await registerCommandsToGuild(guild.id);
+    console.log(`Registered commands to new guild: ${guild.name} (${guild.id})`);
+  } catch (error) {
+    console.error(`Failed to register commands to new guild ${guild.id}:`, error);
   }
 });
 
