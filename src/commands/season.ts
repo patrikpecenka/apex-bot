@@ -24,6 +24,7 @@ import {
 } from '../rankEmbed.ts';
 import { getRankMessage } from '../rankMessageStore.ts';
 import { defaultChannels, rankPickerEnabled } from '../config.ts';
+import { hasTrustedRole } from '../permissions.ts';
 import {
   deletableRoles,
   deleteRoles,
@@ -74,15 +75,11 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     return;
   }
 
-  const { guild } = interaction;
-  const isOwner = guild.ownerId === interaction.user.id;
-  const isAdmin = interaction.memberPermissions.has(
-    PermissionFlagsBits.Administrator,
-  );
+  const { guild, member } = interaction;
 
-  if (!isOwner && !isAdmin) {
+  if (!hasTrustedRole(member)) {
     await interaction.reply({
-      content: 'Only the server owner and administrators can use this.',
+      content: 'Only members with the Owner or Admin role can use this.',
       flags: MessageFlags.Ephemeral,
     });
     return;

@@ -12,6 +12,7 @@ import {
 import { groupSeasons, deletableRoles, deleteRoles } from '../seasonManager.ts';
 import { closeRankMessage } from '../rankEmbed.ts';
 import { clearRankMessage, getRankMessage } from '../rankMessageStore.ts';
+import { hasTrustedRole } from '../permissions.ts';
 
 export const data = new SlashCommandBuilder()
   .setName('delete')
@@ -41,14 +42,14 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     return;
   }
 
-  const { guild } = interaction;
+  const { guild, member } = interaction;
 
-  // Owner only — stricter than /season, which admins may also run. The
-  // Administrator gate on the builder just hides it from non-admins in the UI;
-  // this is the check that actually enforces it.
-  if (guild.ownerId !== interaction.user.id) {
+  // Same Owner/Admin role check as /season. The Administrator gate on the
+  // builder just hides the command from non-admins in the UI; this is the
+  // check that actually enforces it.
+  if (!hasTrustedRole(member)) {
     await interaction.reply({
-      content: 'Only the server owner can delete a season.',
+      content: 'Only members with the Owner or Admin role can delete a season.',
       flags: MessageFlags.Ephemeral,
     });
     return;
