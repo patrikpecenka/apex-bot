@@ -4,10 +4,10 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "start": "node --env-file-if-exists=.env src/index.ts",
-    "send": "node --env-file-if-exists=.env src/send.ts",
-    "diag": "node --env-file-if-exists=.env src/diag.ts",
-    "deploy": "node --env-file-if-exists=.env src/deploy-commands.ts",
+    "start": "node --experimental-strip-types --env-file-if-exists=.env src/index.ts",
+    "send": "node --experimental-strip-types --env-file-if-exists=.env src/send.ts",
+    "diag": "node --experimental-strip-types --env-file-if-exists=.env src/diag.ts",
+    "deploy": "node --experimental-strip-types --env-file-if-exists=.env src/deploy-commands.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
