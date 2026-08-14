@@ -33,7 +33,9 @@ export async function fetchMapRotation(): Promise<MapRotationData> {
     );
   }
 
-  const res = await fetch(`https://api.mozambiquehe.re/maprotation?version=2&auth=${apexApiKey}`);
+  const res = await fetch(`https://api.mozambiquehe.re/maprotation?version=2&auth=${apexApiKey}`, {
+    signal: AbortSignal.timeout(15_000),
+  });
   if (!res.ok) {
     const body = (await res.json().catch(() => null)) as { Error?: string } | null;
     throw new Error(body?.Error ?? `Apex status API returned ${res.status}`);
@@ -55,7 +57,15 @@ const assetsDir = join(dirname(fileURLToPath(import.meta.url)), 'assets');
 
 // PebbleHost's container has no system fonts installed, so text would fail
 // to render (or fall back to nothing) without bundling and registering one.
-GlobalFonts.registerFromPath(join(assetsDir, 'fonts', 'BebasNeue-Regular.ttf'), 'Bebas Neue');
+//
+// This runs at import time, before any error handler in index.ts is attached,
+// so an unreadable font file would kill the process at startup with no log.
+// A missing font should cost us the rotation card, not the whole bot.
+try {
+  GlobalFonts.registerFromPath(join(assetsDir, 'fonts', 'BebasNeue-Regular.ttf'), 'Bebas Neue');
+} catch (error) {
+  console.error('Failed to register the map rotation font; cards will render without it:', error);
+}
 
 const mapImageFiles: Record<string, string> = {
   kingscanyon: 'Kings_Canyon.png',

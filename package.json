@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": ">=22.9"
+  },
   "scripts": {
     "prestart": "node --experimental-strip-types --env-file-if-exists=.env src/deploy-commands.ts || exit 0",
     "start": "node --experimental-strip-types --env-file-if-exists=.env src/index.ts",
