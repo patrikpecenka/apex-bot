@@ -1,0 +1,116 @@
+{
+  "vitejte": {
+    "channelId": "976764841282908161",
+    "cards": [
+      {
+        "blocks": [
+          { "image": "vitejte.png" },
+          { "divider": "small" },
+          {
+            "text": "Rádi vás tu vidíme! Než se pustíte do hraní, mrkněte prosím na pár základních informací níže."
+          },
+          { "divider": "small" },
+          {
+            "text": "**Vlastníci serveru**\n<@312959575412178946>\n\n**Admin**\n<@223494843991719938>\n\nMáte dotaz, nápad nebo problém? Klidně se ozvěte kterémukoliv z nich. 📩"
+          },
+          { "divider": "small" },
+          {
+            "text": "**Neaktivní vedení**\nTyto členy prosím **neoznačujte a nepište jim** – na serveru už nepůsobí a neodpoví:\nVlastníci: {{user:546446867664338944}}, {{user:545588506693730324}}\nAdmin: {{user:415993879360438273}}"
+          }
+        ]
+      }
+    ]
+  },
+
+  "pravidla": {
+    "channelId": "976764841282908161",
+    "cards": [
+      {
+        "blocks": [
+          { "image": "pravidla.png" },
+          { "divider": "small" },
+          {
+            "text": "Respektuj je, ať si to tu užijeme všichni. Neznalost neomlouvá!\n\nZa porušení pravidel hrozí varování, mute, kick nebo ban – u závažných přestupků i bez varování."
+          },
+          {
+            "text": "Tento server se zároveň řídí následujícími pravidly Discordu:\n- [Pravidla komunity Discord](https://discord.com/guidelines)\n- [Podmínky služby Discord](https://discord.com/terms)"
+          }
+        ]
+      },
+      {
+        "text": "### Respekt na prvním místě\nChovej se k ostatním slušně, konflikty tu nemají místo. Někdo ti leze na nervy? Použij tlačítko Mute místo hádek."
+      },
+      {
+        "text": "### Žádná cizí reklama\nSdílení odkazů na jiné Discord/TeamSpeak servery nebo Facebook skupiny je zakázáno."
+      },
+      {
+        "text": "### Vlastní tvorba jen v #media\nChceš propagovat svůj YouTube nebo Twitch? Prosím pouze v kanálu #media."
+      },
+      {
+        "text": "### Bez spamu\nPlatí i pro spamování emoji reakcemi pod zprávami."
+      },
+      {
+        "text": "### Fair play\nNeopouštěj hru bez důvodu a nekaz zážitek ostatním schválnostmi."
+      },
+      {
+        "text": "### Nulová tolerance k diskriminaci\nRasismus, xenofobie, homofobie a podobné nenávistné projevy (včetně urážlivých výrazů) sem nepatří."
+      },
+      {
+        "text": "### Žádný prodej\nProdej účtů, herních předmětů apod. v rámci serveru je zakázán."
+      },
+      {
+        "text": "### Kanál na hledání hráčů = jen hledání hráčů\nOfftopic zprávy tam prosím nepiš."
+      },
+      {
+        "text": "### Specifická pravidla kanálů\nNěkteré kanály mají vlastní pravidla – najdeš je v popisku daného kanálu. Respektuj je."
+      }
+    ]
+  },
+
+  "hledani-hracu": {
+    "channelId": "976764841282908161",
+    "cards": [
+      {
+        "blocks": [
+          { "image": "hledani-hracu.png" },
+          { "divider": "small" },
+          {
+            "text": "Spoluhráče hledejte v <#545580800457048074> podle své platformy – kanál je k dispozici pro **PC**, **PS** a **Xbox**."
+          },
+          { "divider": "small" },
+          {
+            "text": "Pro rychlejší hledání napiš:\n- kolik hráčů hledáš\n- na jaké platformě hraješ\n- a ve které roomce čekáš\n\nNapř. `Hledám 2 hráče, PC, roomka 1`"
+          },
+          { "divider": "small" },
+          {
+            "text": "-# Nikoho nesháníš a chceš si jen zahrát? Skoč do volné squad roomky – většinou se někdo přidá."
+          }
+        ]
+      }
+    ]
+  },
+
+  "role-a-ranky": {
+    "channelId": "976764841282908161",
+    "cards": [
+      {
+        "blocks": [
+          { "image": "role-a-ranky.png" },
+          { "divider": "small" },
+          {
+            "text": "Pro zvolení role podle vašeho ranku a preferované herní platformy využívejte místnost <#547456557768507392>.\n\nPokud máte rank **Master** nebo **Apex Predator**, tak je potřeba potvrdit svůj rank screenshotem v místnosti <#603672062875140106>."
+          },
+          { "divider": "small" },
+          {
+            "text": "-# 💡 Tip: nastav si přezdívku na Discordu stejnou jako máš v Apexu (Origin/EA jméno) – ať tě spoluhráči snáz najdou."
+          }
+        ]
+      }
+    ]
+  },
+
+  "pozvanka": {
+    "channelId": "976764841282908161",
+    "content": "Permanentní pozvánka: https://discord.gg/Kbt3a4r"
+  }
+}
