@@ -1,7 +1,12 @@
 /**
- * `/create <key> [channel]` - posts one of the messages defined in
- * `content/messages.json`, or edits the one it posted last time so the server
- * only ever has a single live copy.
+ * `/create <key> [channel] [message]` - posts one of the messages defined in
+ * `content/messages.json`, or edits an existing one so the server only ever has
+ * a single live copy.
+ *
+ * Which message gets edited, in order of precedence:
+ *   1. the `message` link, when given - works even if nothing was remembered
+ *   2. whatever this command posted last time, from postedMessageStore
+ *   3. nothing matched, so post a new one
  *
  * The subcommands are generated from the JSON keys at startup. Adding a new key
  * therefore needs a bot restart (`npm start` redeploys commands on boot);
@@ -49,11 +54,59 @@ for (const key of keys) {
           .setName('channel')
           .setDescription('Where to post (defaults to the channelId in messages.json)')
           .addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement),
+      )
+      .addStringOption((option) =>
+        option
+          .setName('message')
+          .setDescription('Link (or id) of an existing message to edit instead of posting a new one'),
       ),
   );
 }
 
 export const data = builder;
+
+/** Snowflakes are 17-20 digits today; the range leaves room to grow. */
+const snowflake = String.raw`\d{17,20}`;
+const messageLinkPattern = new RegExp(
+  String.raw`^(?:https?://)?(?:\w+\.)?discord(?:app)?\.com/channels/(${snowflake})/(${snowflake})/(${snowflake})$`,
+  'i',
+);
+
+type MessageReference = { guildId?: string; channelId?: string; messageId: string };
+
+/**
+ * Accepts a full message link (the "Copy Message Link" menu item) or a bare
+ * message id, which is resolved against the target channel.
+ */
+export function parseMessageReference(input: string): MessageReference | null {
+  const trimmed = input.trim();
+
+  const link = messageLinkPattern.exec(trimmed);
+  if (link) return { guildId: link[1], channelId: link[2], messageId: link[3] };
+
+  if (new RegExp(String.raw`^${snowflake}$`).test(trimmed)) return { messageId: trimmed };
+
+  return null;
+}
+
+/**
+ * Losing the stored id only costs the *next* run its edit, so a failed write is
+ * reported alongside the result rather than thrown - the message itself is
+ * already posted by then, and a generic "something went wrong" would hide that.
+ */
+async function remember(
+  guildId: string,
+  key: string,
+  entry: { channelId: string; messageId: string },
+): Promise<string> {
+  try {
+    await setPostedMessage(guildId, key, entry);
+    return '';
+  } catch (error) {
+    console.error(`Failed to record the ${key} message id:`, error);
+    return `\n⚠️ Couldn't save the message id — the next \`/create ${key}\` won't find this message. Pass its link in the \`message\` option, or fix write access to \`data/\`.`;
+  }
+}
 
 export async function execute(interaction: ChatInputCommandInteraction) {
   if (!interaction.inCachedGuild()) {
@@ -121,6 +174,68 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     return;
   }
 
+  // An explicit link wins over anything remembered: it is the way to re-attach
+  // to a message the store never recorded, or lost.
+  const link = interaction.options.getString('message');
+  if (link) {
+    const reference = parseMessageReference(link);
+    if (!reference) {
+      await interaction.editReply(
+        `\`${link}\` isn't a message link or id. Right-click the message → **Copy Message Link**.`,
+      );
+      return;
+    }
+
+    if (reference.guildId && reference.guildId !== guild.id) {
+      await interaction.editReply('That link points at a message on a different server.');
+      return;
+    }
+
+    const linkChannel = reference.channelId
+      ? ((await guild.channels.fetch(reference.channelId).catch(() => null)) as
+          | GuildTextBasedChannel
+          | null)
+      : target;
+
+    const existing = linkChannel?.isTextBased()
+      ? await linkChannel.messages.fetch(reference.messageId).catch(() => null)
+      : null;
+
+    if (!existing) {
+      await interaction.editReply(
+        `I can't find that message${
+          reference.channelId ? ` in <#${reference.channelId}>` : ` in <#${target.id}>`
+        } — check the link, and that I can read that channel.`,
+      );
+      return;
+    }
+
+    if (existing.author.id !== interaction.client.user.id) {
+      await interaction.editReply(
+        `That message was posted by **${existing.author.tag}**, and Discord only lets me edit my own messages. Post a new one with \`/create ${key}\` instead.`,
+      );
+      return;
+    }
+
+    try {
+      const edited = await existing.edit({ ...rendered.payload, attachments: [] });
+      const savedNote = await remember(guild.id, key, {
+        channelId: edited.channelId,
+        messageId: edited.id,
+      });
+      await interaction.editReply(
+        `Updated **${key}** in <#${edited.channelId}>: ${edited.url}${warningNote}${savedNote}`,
+      );
+    } catch (error) {
+      console.error(`Editing the linked ${key} message failed:`, error);
+      await interaction.editReply(
+        `Couldn't edit that message: ${error instanceof Error ? error.message : String(error)}\n` +
+          'A message can\'t switch between the card and embed layouts — if this entry changed type, post a new one and delete the old.',
+      );
+    }
+    return;
+  }
+
   // An existing post in the same channel gets edited; one left behind in a
   // different channel is reported rather than deleted, so nothing vanishes
   // without the caller seeing it.
@@ -138,12 +253,12 @@ export async function execute(interaction: ChatInputCommandInteraction) {
         // `attachments: []` drops the old uploads so re-posted banners replace
         // them instead of stacking up.
         const edited = await previousMessage.edit({ ...rendered.payload, attachments: [] });
-        await setPostedMessage(guild.id, key, {
+        const savedNote = await remember(guild.id, key, {
           channelId: target.id,
           messageId: edited.id,
         });
         await interaction.editReply(
-          `Updated **${key}** in <#${target.id}>: ${edited.url}${warningNote}`,
+          `Updated **${key}** in <#${target.id}>: ${edited.url}${warningNote}${savedNote}`,
         );
         return;
       } catch (error) {
@@ -161,8 +276,11 @@ export async function execute(interaction: ChatInputCommandInteraction) {
   }
 
   const posted = await target.send(rendered.payload);
-  await setPostedMessage(guild.id, key, { channelId: target.id, messageId: posted.id });
+  const savedNote = await remember(guild.id, key, {
+    channelId: target.id,
+    messageId: posted.id,
+  });
   await interaction.editReply(
-    `Posted **${key}** to <#${target.id}>: ${posted.url}${staleNote}${warningNote}`,
+    `Posted **${key}** to <#${target.id}>: ${posted.url}${staleNote}${warningNote}${savedNote}`,
   );
 }
