@@ -1,5 +1,5 @@
 {
-  "vitejte": {
+  "welcome": {
     "channelId": "976764841282908161",
     "cards": [
       {
@@ -22,7 +22,7 @@
     ]
   },
 
-  "pravidla": {
+  "rules": {
     "channelId": "976764841282908161",
     "cards": [
       {
@@ -67,7 +67,7 @@
     ]
   },
 
-  "hledani-hracu": {
+  "lfg": {
     "channelId": "976764841282908161",
     "cards": [
       {
@@ -90,7 +90,7 @@
     ]
   },
 
-  "role-a-ranky": {
+  "roles": {
     "channelId": "976764841282908161",
     "cards": [
       {
@@ -109,7 +109,7 @@
     ]
   },
 
-  "pozvanka": {
+  "invite": {
     "channelId": "976764841282908161",
     "content": "Permanentní pozvánka: https://discord.gg/Kbt3a4r"
   }
