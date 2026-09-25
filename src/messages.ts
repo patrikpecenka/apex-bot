@@ -108,11 +108,11 @@ function parse(raw: string): MessagesFile {
     parsed = JSON.parse(raw);
   } catch (error) {
     throw new Error(
-      `${messagesPath} is not valid JSON: ${error instanceof Error ? error.message : String(error)}`,
+      `${messagesPath} není platný JSON: ${error instanceof Error ? error.message : String(error)}`,
     );
   }
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-    throw new Error(`${messagesPath} must be a JSON object of "key": { ... } entries.`);
+    throw new Error(`${messagesPath} musí být JSON objekt položek "klíč": { ... }.`);
   }
   return parsed as MessagesFile;
 }
@@ -141,8 +141,8 @@ export async function getMessageDefinition(key: string): Promise<MessageDefiniti
   if (!definition) {
     const known = Object.keys(messages);
     throw new Error(
-      `No "${key}" entry in ${messagesPath}.` +
-        (known.length > 0 ? ` Available: ${known.join(', ')}.` : ''),
+      `V ${messagesPath} není položka "${key}".` +
+        (known.length > 0 ? ` K dispozici: ${known.join(', ')}.` : ''),
     );
   }
   return definition;
@@ -159,14 +159,14 @@ function parseColor(color: string | number | undefined, key: string): number | u
   if (typeof color === 'number') return color;
   const hex = color.trim().replace(/^#/, '');
   if (!/^[0-9a-f]{6}$/i.test(hex)) {
-    throw new Error(`"${key}": color must be a hex value like "#FF6B00", got "${color}".`);
+    throw new Error(`"${key}": color musí být hex hodnota jako "#FF6B00", dostal jsem "${color}".`);
   }
   return Number.parseInt(hex, 16);
 }
 
 function checkLength(text: string, max: number, what: string, key: string): string {
   if (text.length > max) {
-    throw new Error(`"${key}": ${what} is ${text.length} characters, Discord's limit is ${max}.`);
+    throw new Error(`"${key}": ${what} má ${text.length} znaků, limit Discordu je ${max}.`);
   }
   return text;
 }
@@ -221,7 +221,7 @@ async function buildEmbed(client: Client, spec: EmbedSpec, key: string): Promise
   for (const [index, field] of (spec.fields ?? []).entries()) {
     const value = trimmed(field?.value);
     if (!value) {
-      throw new Error(`"${key}": field #${index + 1} needs a "value".`);
+      throw new Error(`"${key}": pole #${index + 1} potřebuje "value".`);
     }
     // Discord rejects an empty field name, but a headerless field is a
     // legitimate thing to want - a zero-width space renders as nothing.
@@ -274,7 +274,7 @@ function resolveMedia(reference: string, context: RenderContext): string | null 
   const path = join(assetsDir, filename);
 
   if (!existsSync(path)) {
-    context.warnings.push(`image "${filename}" not found in ${assetsDir} — skipped`);
+    context.warnings.push(`obrázek "${filename}" nenalezen v ${assetsDir} — přeskočen`);
     return null;
   }
 
@@ -342,7 +342,7 @@ async function addBlock(
   }
 
   throw new Error(
-    `"${context.key}": ${where} has none of "text", "image", "images", "divider" or "space".`,
+    `"${context.key}": ${where} nemá ani "text", ani "image", "images", "divider" nebo "space".`,
   );
 }
 
@@ -366,7 +366,7 @@ async function buildCard(
   }
 
   if (blocks.length === 0) {
-    throw new Error(`"${context.key}": card #${index + 1} is empty.`);
+    throw new Error(`"${context.key}": karta #${index + 1} je prázdná.`);
   }
 
   let textLength = 0;
@@ -376,7 +376,7 @@ async function buildCard(
       container,
       block,
       context,
-      `card #${index + 1} block #${blockIndex + 1}`,
+      `karta #${index + 1} blok #${blockIndex + 1}`,
     );
   }
 
@@ -413,7 +413,7 @@ export async function renderMessage(
     // alongside it, so say that plainly instead of letting the API 400.
     if (trimmed(definition.content) || (definition.embeds ?? []).length > 0) {
       throw new Error(
-        `"${key}": "cards" can't be combined with "content" or "embeds" — Discord treats them as different message types. Split them into two entries.`,
+        `"${key}": "cards" nejde kombinovat s "content" ani "embeds" — Discord je bere jako různé typy zpráv. Rozděl to do dvou položek.`,
       );
     }
     const containers: ContainerBuilder[] = [];
@@ -428,13 +428,13 @@ export async function renderMessage(
     // over ten cards as long as their blocks stay within budget.
     if (context.components > limits.components) {
       throw new Error(
-        `"${key}": ${cards.length} cards add up to ${context.components} components, Discord's limit per message is ${limits.components}. Move some into a second entry.`,
+        `"${key}": ${cards.length} karet dá dohromady ${context.components} komponent, limit Discordu na zprávu je ${limits.components}. Přesuň část do druhé položky.`,
       );
     }
 
     if (textLength > limits.cardText) {
       throw new Error(
-        `"${key}": the cards hold ${textLength} characters of text, Discord's limit across one message is ${limits.cardText}. Split it into a second message.`,
+        `"${key}": karty obsahují ${textLength} znaků textu, limit Discordu na jednu zprávu je ${limits.cardText}. Rozděl to do druhé zprávy.`,
       );
     }
 
@@ -451,7 +451,7 @@ export async function renderMessage(
 
   const specs = definition.embeds ?? [];
   if (specs.length > 10) {
-    throw new Error(`"${key}": ${specs.length} embeds, Discord allows at most 10 per message.`);
+    throw new Error(`"${key}": ${specs.length} embedů, Discord jich dovolí nejvýš 10 na zprávu.`);
   }
 
   const embeds: EmbedBuilder[] = [];
@@ -462,7 +462,7 @@ export async function renderMessage(
     : '';
 
   if (embeds.length === 0 && !content) {
-    throw new Error(`"${key}": nothing to post - it has no "content", "embeds" or "cards".`);
+    throw new Error(`"${key}": není co vypsat - nemá "content", "embeds" ani "cards".`);
   }
 
   return {

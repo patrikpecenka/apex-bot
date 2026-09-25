@@ -104,14 +104,14 @@ async function remember(
     return '';
   } catch (error) {
     console.error(`Failed to record the ${key} message id:`, error);
-    return `\n⚠️ Couldn't save the message id — the next \`/create ${key}\` won't find this message. Pass its link in the \`message\` option, or fix write access to \`data/\`.`;
+    return `\n⚠️ Nepovedlo se uložit id zprávy — příští \`/create ${key}\` ji nenajde. Předej jí odkaz ve volbě \`message\`, nebo oprav práva na zápis do \`data/\`.`;
   }
 }
 
 export async function execute(interaction: ChatInputCommandInteraction) {
   if (!interaction.inCachedGuild()) {
     await interaction.reply({
-      content: 'This command only works inside a server.',
+      content: 'Tenhle příkaz funguje jen na serveru.',
       flags: MessageFlags.Ephemeral,
     });
     return;
@@ -121,7 +121,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
 
   if (!hasOwnerRole(member)) {
     await interaction.reply({
-      content: `Only members with the ${ownerRoleName} role can use this.`,
+      content: `Tenhle příkaz můžou použít jen členové s rolí ${ownerRoleName}.`,
       flags: MessageFlags.Ephemeral,
     });
     return;
@@ -131,8 +131,8 @@ export async function execute(interaction: ChatInputCommandInteraction) {
   if (!key) {
     await interaction.reply({
       content:
-        `No messages are loaded — \`${messagesPath}\` is missing or unreadable. ` +
-        'Fix the file and restart the bot.',
+        `Nenačetly se žádné zprávy — \`${messagesPath}\` chybí nebo se nedá přečíst. ` +
+        'Oprav soubor a restartuj bota.',
       flags: MessageFlags.Ephemeral,
     });
     return;
@@ -150,7 +150,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     payload = { definition, rendered: await renderMessage(interaction.client, key, definition) };
   } catch (error) {
     await interaction.editReply(
-      `Couldn't build **${key}**:\n\`\`\`\n${error instanceof Error ? error.message : String(error)}\n\`\`\``,
+      `Nepovedlo se sestavit **${key}**:\n\`\`\`\n${error instanceof Error ? error.message : String(error)}\n\`\`\``,
     );
     return;
   }
@@ -168,8 +168,8 @@ export async function execute(interaction: ChatInputCommandInteraction) {
   if (!target?.isSendable()) {
     await interaction.editReply(
       definition.channelId && !chosen && !configured
-        ? `Channel \`${definition.channelId}\` from the "${key}" entry is missing or I can't post in it.`
-        : `I can't post in ${target ? `<#${target.id}>` : 'that channel'} — check my permissions.`,
+        ? `Kanál \`${definition.channelId}\` z položky "${key}" neexistuje nebo do něj nemůžu psát.`
+        : `Nemůžu psát do ${target ? `<#${target.id}>` : 'toho kanálu'} — zkontroluj mi prosím práva.`,
     );
     return;
   }
@@ -181,13 +181,13 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     const reference = parseMessageReference(link);
     if (!reference) {
       await interaction.editReply(
-        `\`${link}\` isn't a message link or id. Right-click the message → **Copy Message Link**.`,
+        `\`${link}\` není odkaz na zprávu ani její id. Klikni na zprávu pravým → **Kopírovat odkaz na zprávu**.`,
       );
       return;
     }
 
     if (reference.guildId && reference.guildId !== guild.id) {
-      await interaction.editReply('That link points at a message on a different server.');
+      await interaction.editReply('Ten odkaz míří na zprávu na jiném serveru.');
       return;
     }
 
@@ -203,16 +203,16 @@ export async function execute(interaction: ChatInputCommandInteraction) {
 
     if (!existing) {
       await interaction.editReply(
-        `I can't find that message${
-          reference.channelId ? ` in <#${reference.channelId}>` : ` in <#${target.id}>`
-        } — check the link, and that I can read that channel.`,
+        `Tu zprávu nemůžu najít${
+          reference.channelId ? ` v <#${reference.channelId}>` : ` v <#${target.id}>`
+        } — zkontroluj odkaz a jestli do toho kanálu vidím.`,
       );
       return;
     }
 
     if (existing.author.id !== interaction.client.user.id) {
       await interaction.editReply(
-        `That message was posted by **${existing.author.tag}**, and Discord only lets me edit my own messages. Post a new one with \`/create ${key}\` instead.`,
+        `Tu zprávu poslal **${existing.author.tag}** a Discord mi dovolí upravovat jen moje vlastní zprávy. Vypiš radši novou přes \`/create ${key}\`.`,
       );
       return;
     }
@@ -224,13 +224,13 @@ export async function execute(interaction: ChatInputCommandInteraction) {
         messageId: edited.id,
       });
       await interaction.editReply(
-        `Updated **${key}** in <#${edited.channelId}>: ${edited.url}${warningNote}${savedNote}`,
+        `Aktualizováno **${key}** v <#${edited.channelId}>: ${edited.url}${warningNote}${savedNote}`,
       );
     } catch (error) {
       console.error(`Editing the linked ${key} message failed:`, error);
       await interaction.editReply(
-        `Couldn't edit that message: ${error instanceof Error ? error.message : String(error)}\n` +
-          'A message can\'t switch between the card and embed layouts — if this entry changed type, post a new one and delete the old.',
+        `Tu zprávu se nepovedlo upravit: ${error instanceof Error ? error.message : String(error)}\n` +
+          'Zpráva nemůže přejít mezi kartou a embedem — pokud se typ položky změnil, vypiš novou a starou smaž.',
       );
     }
     return;
@@ -258,17 +258,17 @@ export async function execute(interaction: ChatInputCommandInteraction) {
           messageId: edited.id,
         });
         await interaction.editReply(
-          `Updated **${key}** in <#${target.id}>: ${edited.url}${warningNote}${savedNote}`,
+          `Aktualizováno **${key}** v <#${target.id}>: ${edited.url}${warningNote}${savedNote}`,
         );
         return;
       } catch (error) {
         // Either a different bot account posted it, or the entry switched
         // between cards and embeds - Discord won't convert a message's type.
         console.error(`Editing the ${key} message failed, posting a new one:`, error);
-        staleNote = `\nCouldn't edit the old message (${previousMessage.url}) — posted a new one instead. Delete the old one.`;
+        staleNote = `\nStarou zprávu (${previousMessage.url}) se nepovedlo upravit — vypsal jsem novou. Tu starou smaž.`;
       }
     } else if (previousMessage) {
-      staleNote = `\nThe previous copy is still up in <#${previous.channelId}>: ${previousMessage.url} — delete it if you don't want two.`;
+      staleNote = `\nPředchozí kopie pořád visí v <#${previous.channelId}>: ${previousMessage.url} — smaž ji, pokud nechceš mít dvě.`;
     } else {
       // Deleted by hand; drop the dangling reference.
       await clearPostedMessage(guild.id, key);
@@ -281,6 +281,6 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     messageId: posted.id,
   });
   await interaction.editReply(
-    `Posted **${key}** to <#${target.id}>: ${posted.url}${staleNote}${warningNote}${savedNote}`,
+    `Vypsáno **${key}** do <#${target.id}>: ${posted.url}${staleNote}${warningNote}${savedNote}`,
   );
 }

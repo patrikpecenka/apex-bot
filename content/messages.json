@@ -109,6 +109,27 @@
     ]
   },
 
+  "welcome-dm": {
+    "channelId": "976764841282908161",
+    "cards": [
+      {
+        "blocks": [
+          {
+            "text": "## Vítej na serveru! 👋\nAť se hned máš čeho chytit, tady je to nejdůležitější."
+          },
+          { "divider": "small" },
+          {
+            "text": "**1. Přečti si pravidla** – najdeš je v <#976764841282908161>\n**2. Nastav si role** – rank a platformu si vybereš v <#547456557768507392>\n**3. Hledej spoluhráče** – v <#545580800457048074> napiš kolik hráčů hledáš, na jaké platformě a v jaké roomce\n**4. Vlastní tvorba** – YouTube a Twitch patří jen do <#546466351972089864>"
+          },
+          { "divider": "small" },
+          {
+            "text": "-#Tip: nastav si přezdívku na Discordu stejnou jako máš v Apexu (Origin/EA jméno) – ať tě spoluhráči snáz najdou"
+          }
+        ]
+      }
+    ]
+  },
+
   "invite": {
     "channelId": "976764841282908161",
     "content": "Permanentní pozvánka: https://discord.gg/Kbt3a4r"

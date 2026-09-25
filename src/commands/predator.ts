@@ -1,3 +1,10 @@
+/**
+ * `/predator post|stop` — the live Apex Predator cutoff message.
+ *
+ * Mirrors /maprotation: one live message per guild, admin-gated, and a stale
+ * record (message deleted by hand) frees the slot instead of blocking it.
+ */
+
 import {
   ChannelType,
   InteractionContextType,
@@ -7,21 +14,17 @@ import {
   type ChatInputCommandInteraction,
   type TextBasedChannel,
 } from 'discord.js';
-import { buildMapRotationMessage, fetchMapRotation } from '../mapRotation.ts';
-import {
-  clearMapRotationMessage,
-  getMapRotationMessage,
-  setMapRotationMessage,
-} from '../mapRotationStore.ts';
+import { buildPredatorMessage, fetchPredator, predatorStore } from '../predator.ts';
+import { defaultChannels } from '../config.ts';
 import { hasTrustedRole } from '../permissions.ts';
 
 export const data = new SlashCommandBuilder()
-  .setName('maprotation')
-  .setDescription('Live-updating Apex Legends map rotation message')
+  .setName('predator')
+  .setDescription('Live-updating Apex Predator cutoff message')
   .addSubcommand((sub) =>
     sub
       .setName('post')
-      .setDescription('Post the live map rotation message')
+      .setDescription('Post the live predator cutoff message')
       .addChannelOption((option) =>
         option
           .setName('channel')
@@ -29,7 +32,9 @@ export const data = new SlashCommandBuilder()
           .addChannelTypes(ChannelType.GuildText),
       ),
   )
-  .addSubcommand((sub) => sub.setName('stop').setDescription('Remove the live map rotation message'))
+  .addSubcommand((sub) =>
+    sub.setName('stop').setDescription('Remove the live predator cutoff message'),
+  )
   // Hides the command from everyone without Administrator. Server admins can
   // override this in Server Settings -> Integrations, so execute() re-checks.
   .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
@@ -48,19 +53,17 @@ export async function execute(interaction: ChatInputCommandInteraction) {
 
   if (!hasTrustedRole(member)) {
     await interaction.reply({
-      content: 'Spravovat zprávu s rotací map můžou jen členové s rolí Owner nebo Admin.',
+      content: 'Spravovat zprávu s hranicí pro predátora můžou jen členové s rolí Owner nebo Admin.',
       flags: MessageFlags.Ephemeral,
     });
     return;
   }
 
-  const subcommand = interaction.options.getSubcommand();
-
-  if (subcommand === 'stop') {
-    const existing = await getMapRotationMessage(guild.id);
+  if (interaction.options.getSubcommand() === 'stop') {
+    const existing = await predatorStore.get(guild.id);
     if (!existing) {
       await interaction.reply({
-        content: 'Žádná živá zpráva s rotací map není vypsaná.',
+        content: 'Žádná živá zpráva s hranicí pro predátora není vypsaná.',
         flags: MessageFlags.Ephemeral,
       });
       return;
@@ -71,18 +74,20 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       const message = await channel.messages.fetch(existing.messageId).catch(() => null);
       await message?.delete().catch(() => {});
     }
-    await clearMapRotationMessage(guild.id);
+    await predatorStore.remove(guild.id);
 
-    await interaction.reply({ content: 'Zpráva s rotací map byla odstraněna.', flags: MessageFlags.Ephemeral });
+    await interaction.reply({
+      content: 'Zpráva s hranicí pro predátora byla odstraněna.',
+      flags: MessageFlags.Ephemeral,
+    });
     return;
   }
 
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
   // One live message at a time — if the tracked one is still there, point at
-  // it instead of creating a second. If it's gone (deleted by hand), the slot
-  // is free again, so clear the stale record and fall through to posting.
-  const existing = await getMapRotationMessage(guild.id);
+  // it. If it's gone, the slot is free again: clear it and post a new one.
+  const existing = await predatorStore.get(guild.id);
   if (existing) {
     const channel = await guild.channels.fetch(existing.channelId).catch(() => null);
     const message = channel?.isTextBased()
@@ -90,28 +95,33 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       : null;
     if (message) {
       await interaction.editReply(
-        `Zpráva s rotací map už běží: ${message.url}\nPokud ji chceš přesunout, spusť nejdřív \`/maprotation stop\`.`,
+        `Zpráva s hranicí pro predátora už běží: ${message.url}\nPokud ji chceš přesunout, spusť nejdřív \`/predator stop\`.`,
       );
       return;
     }
-    await clearMapRotationMessage(guild.id);
+    await predatorStore.remove(guild.id);
   }
 
-  const targetChannel = (interaction.options.getChannel('channel') ?? interaction.channel) as TextBasedChannel;
+  const configured = defaultChannels.predator
+    ? await guild.channels.fetch(defaultChannels.predator).catch(() => null)
+    : null;
+  const targetChannel = (interaction.options.getChannel('channel') ??
+    configured ??
+    interaction.channel) as TextBasedChannel | null;
+
   if (!targetChannel?.isSendable()) {
     await interaction.editReply('Do tohohle kanálu psát nemůžu.');
     return;
   }
 
   try {
-    const rotation = await fetchMapRotation();
-    const rendered = await buildMapRotationMessage(rotation, Date.now());
+    const rendered = buildPredatorMessage(await fetchPredator(), Date.now());
     const message = await targetChannel.send(rendered);
-    await setMapRotationMessage(guild.id, { channelId: message.channelId, messageId: message.id });
+    await predatorStore.set(guild.id, { channelId: message.channelId, messageId: message.id });
     await interaction.editReply(`Vypsáno: ${message.url}`);
   } catch (error) {
     await interaction.editReply(
-      `Nepovedlo se vypsat rotaci map: ${error instanceof Error ? error.message : String(error)}`,
+      `Nepovedlo se vypsat hranici pro predátora: ${error instanceof Error ? error.message : String(error)}`,
     );
   }
 }

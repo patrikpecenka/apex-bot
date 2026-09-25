@@ -36,7 +36,7 @@ export const data = new SlashCommandBuilder()
 export async function execute(interaction: ChatInputCommandInteraction) {
   if (!interaction.inCachedGuild()) {
     await interaction.reply({
-      content: 'This command only works inside a server.',
+      content: 'Tenhle příkaz funguje jen na serveru.',
       flags: MessageFlags.Ephemeral,
     });
     return;
@@ -49,7 +49,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
   // check that actually enforces it.
   if (!hasTrustedRole(member)) {
     await interaction.reply({
-      content: 'Only members with the Owner or Admin role can delete a season.',
+      content: 'Smazat season můžou jen členové s rolí Owner nebo Admin.',
       flags: MessageFlags.Ephemeral,
     });
     return;
@@ -62,7 +62,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
 
   const group = groupSeasons(guild).find((entry) => entry.season === season);
   if (!group) {
-    await interaction.editReply(`No roles found for Season ${season}.`);
+    await interaction.editReply(`Pro Season ${season} jsem nenašel žádné role.`);
     return;
   }
 
@@ -71,7 +71,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
 
   if (removable.length === 0) {
     await interaction.editReply(
-      `Found ${group.roles.length} role(s) for Season ${season}, but all of them sit above my own role. Move my role higher in Server Settings → Roles.`,
+      `Pro Season ${season} jsem našel ${group.roles.length} rolí, ale všechny jsou nad mojí vlastní rolí. Posuň moji roli výš v Nastavení serveru → Role.`,
     );
     return;
   }
@@ -81,16 +81,16 @@ export async function execute(interaction: ChatInputCommandInteraction) {
   const confirmId = `confirm-delete-season-${season}-${interaction.id}`;
   const cancelId = `cancel-delete-season-${season}-${interaction.id}`;
   const buttons = new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder().setCustomId(confirmId).setLabel('Delete').setStyle(ButtonStyle.Danger),
-    new ButtonBuilder().setCustomId(cancelId).setLabel('Cancel').setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId(confirmId).setLabel('Smazat').setStyle(ButtonStyle.Danger),
+    new ButtonBuilder().setCustomId(cancelId).setLabel('Zrušit').setStyle(ButtonStyle.Secondary),
   );
 
   const prompt = await interaction.editReply({
     content: [
-      `Delete ${removable.length} role(s) for **Season ${season}**?`,
+      `Smazat ${removable.length} rolí pro **Season ${season}**?`,
       removable.map((role) => `• ${role.name}`).join('\n'),
-      blocked > 0 ? `\n${blocked} role(s) will be skipped — they sit above my role.` : '',
-      '\nThis removes them from every member and cannot be undone.',
+      blocked > 0 ? `\n${blocked} rolí přeskočím — jsou nad mojí rolí.` : '',
+      '\nRole se odeberou všem členům a nejde to vzít zpět.',
     ]
       .filter(Boolean)
       .join('\n'),
@@ -105,16 +105,16 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       time: 30_000,
     });
   } catch {
-    await interaction.editReply({ content: 'Timed out, nothing was deleted.', components: [] });
+    await interaction.editReply({ content: 'Vypršel čas, nic jsem nesmazal.', components: [] });
     return;
   }
 
   if (choice.customId === cancelId) {
-    await choice.update({ content: 'Cancelled, nothing was deleted.', components: [] });
+    await choice.update({ content: 'Zrušeno, nic jsem nesmazal.', components: [] });
     return;
   }
 
-  await choice.update({ content: `Deleting ${removable.length} role(s)...`, components: [] });
+  await choice.update({ content: `Mažu ${removable.length} rolí…`, components: [] });
 
   try {
     const deleted = await deleteRoles(removable, `Season ${season} deleted by ${interaction.user.tag}`);
@@ -128,15 +128,15 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     }
 
     await interaction.editReply({
-      content: `Deleted ${deleted.length} role(s) for **Season ${season}**.${
-        blocked > 0 ? ` Skipped ${blocked} that sit above my role.` : ''
+      content: `Smazáno ${deleted.length} rolí pro **Season ${season}**.${
+        blocked > 0 ? ` ${blocked} jsem přeskočil — jsou nad mojí rolí.` : ''
       }`,
       components: [],
     });
   } catch (error) {
     console.error(`Failed deleting Season ${season}:`, error);
     await interaction.editReply({
-      content: `Partly failed: ${error instanceof Error ? error.message : String(error)}`,
+      content: `Částečně se to nepovedlo: ${error instanceof Error ? error.message : String(error)}`,
       components: [],
     });
   }

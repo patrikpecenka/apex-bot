@@ -69,7 +69,7 @@ export const data = new SlashCommandBuilder()
 export async function execute(interaction: ChatInputCommandInteraction) {
   if (!interaction.inCachedGuild()) {
     await interaction.reply({
-      content: 'This command only works inside a server.',
+      content: 'Tenhle příkaz funguje jen na serveru.',
       flags: MessageFlags.Ephemeral,
     });
     return;
@@ -79,7 +79,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
 
   if (!hasTrustedRole(member)) {
     await interaction.reply({
-      content: 'Only members with the Owner or Admin role can use this.',
+      content: 'Tenhle příkaz můžou použít jen členové s rolí Owner nebo Admin.',
       flags: MessageFlags.Ephemeral,
     });
     return;
@@ -104,8 +104,8 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       .join('\n');
     await interaction.editReply({
       content:
-        `**Season ${season}** already exists — ${existing.size} role(s) are still on the server:\n${listing}\n\n` +
-        `Run \`/delete season number:${season}\` first if you want to recreate it.`,
+        `**Season ${season}** už existuje — na serveru je ${existing.size} rolí:\n${listing}\n\n` +
+        `Pokud ji chceš vytvořit znovu, spusť nejdřív \`/delete season number:${season}\`.`,
       allowedMentions: { parse: [] },
     });
     return;
@@ -114,7 +114,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
   const me = guild.members.me;
   if (!me?.permissions.has(PermissionFlagsBits.ManageRoles)) {
     await interaction.editReply(
-      'I need the **Manage Roles** permission to do this.',
+      'Na tohle potřebuju právo **Spravovat role** (Manage Roles).',
     );
     return;
   }
@@ -127,7 +127,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     const target = findPruneTarget(guild, season);
     if (!target) {
       await interaction.editReply(
-        `The server is at Discord's ${maxGuildRoles}-role limit and no old season has Platinum, Gold, Silver or Bronze left to free up. Delete some roles manually first.`,
+        `Server je na limitu ${maxGuildRoles} rolí a žádná stará season už nemá Platinum, Gold, Silver ani Bronze, které by šly uvolnit. Smaž nejdřív nějaké role ručně.`,
       );
       return;
     }
@@ -135,7 +135,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     const removable = deletableRoles(guild, target.roles);
     if (removable.length === 0) {
       await interaction.editReply(
-        `Need to free space by pruning Season ${target.season}, but its roles sit above mine. Move my role higher and try again.`,
+        `Potřebuju uvolnit místo umazáním Season ${target.season}, ale její role jsou nad mojí. Posuň moji roli výš a zkus to znovu.`,
       );
       return;
     }
@@ -151,13 +151,13 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       .filter((tier) => deletedTiers.includes(tier));
 
     pruneSummary = { season: target.season, tiers: orderedTiers };
-    pruneNote = `\n\nFreed space by deleting ${deleted.length} role(s) from Season ${target.season}: ${orderedTiers.join(', ')}.`;
+    pruneNote = `\n\nUvolnil jsem místo smazáním ${deleted.length} rolí ze Season ${target.season}: ${orderedTiers.join(', ')}.`;
 
     await guild.roles.fetch();
 
     if (freeRoleSlots(guild) < seasonTiers.length) {
       await interaction.editReply(
-        `Pruned Season ${target.season}, but that only freed ${deleted.length} slot(s) and ${seasonTiers.length} are needed. Run the command again to prune the next oldest season.`,
+        `Umazal jsem Season ${target.season}, ale uvolnilo se jen ${deleted.length} míst a potřeba jich je ${seasonTiers.length}. Spusť příkaz znovu, umaže se další nejstarší season.`,
       );
       return;
     }
@@ -173,11 +173,11 @@ export async function execute(interaction: ChatInputCommandInteraction) {
   if (anchorPosition + seasonTiers.length >= ceiling) {
     await interaction.editReply(
       [
-        `My highest role (**${me.roles.highest.name}**) sits too low to place these roles.`,
+        `Moje nejvyšší role (**${me.roles.highest.name}**) je moc nízko na to, abych tyhle role umístil.`,
         anchor
-          ? `It has to be above **${anchor.name}** with at least ${seasonTiers.length} slots to spare.`
-          : `It needs at least ${seasonTiers.length} slots above it.`,
-        'Drag my role higher in Server Settings → Roles and run this again.',
+          ? `Musí být nad **${anchor.name}** a mít nad sebou aspoň ${seasonTiers.length} volných míst.`
+          : `Musí mít nad sebou aspoň ${seasonTiers.length} volných míst.`,
+        'Přetáhni moji roli výš v Nastavení serveru → Role a spusť to znovu.',
       ].join('\n'),
     );
     return;
@@ -217,7 +217,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
   } catch (error) {
     console.error('Failed to create season roles:', error);
     await interaction.editReply(
-      `Created ${created.length} of ${seasonTiers.length} roles, then hit an error: ${
+      `Vytvořil jsem ${created.length} z ${seasonTiers.length} rolí a pak narazil na chybu: ${
         error instanceof Error ? error.message : String(error)
       }`,
     );
@@ -249,10 +249,10 @@ export async function execute(interaction: ChatInputCommandInteraction) {
         prune: pruneSummary,
         ping,
       });
-      embedNote = `\n\nRank picker posted: ${posted.url}`;
+      embedNote = `\n\nVýběr ranku vypsán: ${posted.url}`;
     } catch (error) {
       console.error('Failed to post the rank embed:', error);
-      embedNote = `\n\nRoles were created, but posting the rank picker failed: ${
+      embedNote = `\n\nRole se vytvořily, ale vypsání výběru ranku selhalo: ${
         error instanceof Error ? error.message : String(error)
       }`;
     }
@@ -267,10 +267,10 @@ export async function execute(interaction: ChatInputCommandInteraction) {
   if (rankCheckChannel) {
     try {
       const posted = await postSeasonStartNotice(rankCheckChannel as TextBasedChannel, season);
-      seasonStartNote = `\n\nSeason-start notice posted: ${posted.url}`;
+      seasonStartNote = `\n\nOznámení o startu season vypsáno: ${posted.url}`;
     } catch (error) {
       console.error('Failed to post the season-start notice:', error);
-      seasonStartNote = `\n\nPosting the season-start notice to the rank-check room failed: ${
+      seasonStartNote = `\n\nVypsání oznámení o startu season do rank-check roomky selhalo: ${
         error instanceof Error ? error.message : String(error)
       }`;
     }
@@ -281,8 +281,8 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     .join('\n');
 
   await interaction.editReply(
-    `Created **Season ${season}** — ${seasonTiers.length} roles, placed above ${
-      anchor ? `Season ${parseSeasonNumber(anchor.name)}` : 'everything else'
+    `Vytvořena **Season ${season}** — ${seasonTiers.length} rolí, umístěných nad ${
+      anchor ? `Season ${parseSeasonNumber(anchor.name)}` : 'vším ostatním'
     }:\n${listing}${pruneNote}${embedNote}${seasonStartNote}`,
   );
 }

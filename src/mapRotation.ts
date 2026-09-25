@@ -26,21 +26,65 @@ export type MapRotationData = {
   wildcard?: MapPeriod;
 };
 
-export async function fetchMapRotation(): Promise<MapRotationData> {
-  if (!apexApiKey) {
-    throw new Error(
-      'Missing APEX_API_KEY. Get a free key from https://api.mozambiquehe.re/getkey and set it in the env.',
-    );
-  }
+// The host's egress to Cloudflare drops out for seconds at a time. These are
+// the codes that means "the network blinked", as opposed to the API actually
+// rejecting us — worth another go, and not worth a stack trace in the log.
+const transientNetworkCodes = new Set([
+  'UND_ERR_CONNECT_TIMEOUT',
+  'UND_ERR_SOCKET',
+  'ECONNRESET',
+  'ECONNREFUSED',
+  'ETIMEDOUT',
+  'ENOTFOUND',
+  'EAI_AGAIN',
+]);
 
+/** True for a network blip we expect to recover on its own. */
+export function isTransientNetworkError(error: unknown): boolean {
+  // `fetch` wraps the real reason in `cause`; a timeout surfaces as TimeoutError.
+  if (error instanceof Error && error.name === 'TimeoutError') return true;
+  const code = (error as { cause?: { code?: unknown }; code?: unknown })?.cause?.code ?? (error as { code?: unknown })?.code;
+  return typeof code === 'string' && transientNetworkCodes.has(code);
+}
+
+/** One-line description, for log lines that don't warrant a full stack. */
+export function describeError(error: unknown): string {
+  const cause = (error as { cause?: unknown })?.cause;
+  if (cause instanceof Error) return `${error instanceof Error ? error.message : String(error)} (${cause.message})`;
+  return error instanceof Error ? error.message : String(error);
+}
+
+async function requestMapRotation(): Promise<MapRotationData> {
   const res = await fetch(`https://api.mozambiquehe.re/maprotation?version=2&auth=${apexApiKey}`, {
     signal: AbortSignal.timeout(15_000),
   });
   if (!res.ok) {
     const body = (await res.json().catch(() => null)) as { Error?: string } | null;
-    throw new Error(body?.Error ?? `Apex status API returned ${res.status}`);
+    throw new Error(body?.Error ?? `Apex API vrátilo ${res.status}`);
   }
   return (await res.json()) as MapRotationData;
+}
+
+export async function fetchMapRotation(): Promise<MapRotationData> {
+  if (!apexApiKey) {
+    throw new Error(
+      'Chybí APEX_API_KEY. Klíč zdarma je na https://api.mozambiquehe.re/getkey — nastav ho v env.',
+    );
+  }
+
+  // Retry the blips in-tick: waiting the full 60s for the next tick means a
+  // visibly stale countdown ring, and these outages last seconds. Worst case
+  // stays under the refresh interval, and the in-flight guard covers overrun.
+  const attempts = 3;
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await requestMapRotation();
+    } catch (error) {
+      // A 4xx/5xx from the API itself won't fix itself by asking again.
+      if (attempt >= attempts || !isTransientNetworkError(error)) throw error;
+      await new Promise((resolve) => setTimeout(resolve, attempt * 2_000));
+    }
+  }
 }
 
 type RotationMode = 'battle_royale' | 'ranked' | 'wildcard';
@@ -281,7 +325,7 @@ export async function buildMapRotationMessage(data: MapRotationData, nowMs: numb
   }
 
   if (embeds.length === 0) {
-    throw new Error('Apex status API returned no usable rotation data.');
+    throw new Error('Apex API nevrátilo použitelná data o rotaci map.');
   }
 
   return { embeds, files };

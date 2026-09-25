@@ -7,9 +7,7 @@
  * other stores.
  */
 
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { createJsonStore } from './jsonStore.ts';
 
 export type PostedMessage = {
   channelId: string;
@@ -18,38 +16,14 @@ export type PostedMessage = {
   updatedAt: string;
 };
 
-/** guild id -> message key -> where it went. */
-type StoreShape = Record<string, Record<string, PostedMessage>>;
-
-const storePath = join(
-  dirname(fileURLToPath(import.meta.url)),
-  '..',
-  'data',
-  'postedMessages.json',
-);
-
-let cache: StoreShape | null = null;
-
-async function load(): Promise<StoreShape> {
-  if (cache) return cache;
-  try {
-    cache = JSON.parse(await readFile(storePath, 'utf8')) as StoreShape;
-  } catch {
-    cache = {};
-  }
-  return cache;
-}
-
-async function save(store: StoreShape): Promise<void> {
-  await mkdir(dirname(storePath), { recursive: true });
-  await writeFile(storePath, JSON.stringify(store, null, 2));
-}
+/** One entry per guild, holding that guild's messages keyed by message key. */
+const store = createJsonStore<Record<string, PostedMessage>>('postedMessages.json');
 
 export async function getPostedMessage(
   guildId: string,
   key: string,
 ): Promise<PostedMessage | null> {
-  return (await load())[guildId]?.[key] ?? null;
+  return (await store.get(guildId))?.[key] ?? null;
 }
 
 export async function setPostedMessage(
@@ -57,14 +31,14 @@ export async function setPostedMessage(
   key: string,
   entry: Omit<PostedMessage, 'updatedAt'>,
 ): Promise<void> {
-  const store = await load();
-  store[guildId] ??= {};
-  store[guildId][key] = { ...entry, updatedAt: new Date().toISOString() };
-  await save(store);
+  const guild = (await store.get(guildId)) ?? {};
+  guild[key] = { ...entry, updatedAt: new Date().toISOString() };
+  await store.set(guildId, guild);
 }
 
 export async function clearPostedMessage(guildId: string, key: string): Promise<void> {
-  const store = await load();
-  delete store[guildId]?.[key];
-  await save(store);
+  const guild = await store.get(guildId);
+  if (!guild?.[key]) return;
+  delete guild[key];
+  await store.set(guildId, guild);
 }

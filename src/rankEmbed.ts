@@ -25,7 +25,7 @@ export async function resolveRankEmojis(guild: Guild): Promise<Map<string, Guild
   }
 
   if (missing.length > 0) {
-    throw new Error(`Missing server emoji: ${missing.join(', ')}`);
+    throw new Error(`Chybí emoji na serveru: ${missing.join(', ')}`);
   }
   return found;
 }
@@ -96,7 +96,7 @@ export async function postSeasonStartNotice(
   season: number,
 ): Promise<Message> {
   if (!channel.isSendable()) {
-    throw new Error('I cannot post in that channel.');
+    throw new Error('Do tohohle kanálu psát nemůžu.');
   }
   return channel.send({ embeds: [buildSeasonStartEmbed(season)] });
 }
@@ -116,7 +116,7 @@ export async function postRankMessage(options: {
   const { guild, channel, season, roles, prune, ping } = options;
 
   if (!channel.isSendable()) {
-    throw new Error('I cannot post in that channel.');
+    throw new Error('Do tohohle kanálu psát nemůžu.');
   }
 
   const emojis = await resolveRankEmojis(guild);
@@ -125,7 +125,7 @@ export async function postRankMessage(options: {
   for (const { tier, emoji } of selfAssignTiers) {
     const wanted = seasonRoleName(season, tier);
     const role = roles.find((candidate) => candidate.name === wanted);
-    if (!role) throw new Error(`Missing role ${wanted}`);
+    if (!role) throw new Error(`Chybí role ${wanted}`);
     roleByEmoji.set(emojis.get(emoji)!.id, role);
   }
 

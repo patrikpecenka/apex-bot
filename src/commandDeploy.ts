@@ -5,7 +5,7 @@
  */
 
 import { REST, Routes } from 'discord.js';
-import { token } from './config.ts';
+import { isHomeGuild, token } from './config.ts';
 import { commands } from './commands/registry.ts';
 
 type PartialApp = { id: string };
@@ -29,11 +29,15 @@ export async function currentGuildIds(): Promise<string[]> {
   return guilds.map((guild) => guild.id);
 }
 
-/** Registers the current command set to a single guild — instant, unlike global. */
+/**
+ * Registers the current command set to a single guild — instant, unlike global.
+ * They are all home-server commands, so any other server gets an empty set
+ * (which also clears commands a server got before HOME_GUILD_ID was set).
+ */
 export async function registerCommandsToGuild(guildId: string): Promise<void> {
   const id = await getAppId();
   try {
-    await rest.put(Routes.applicationGuildCommands(id, guildId), { body });
+    await rest.put(Routes.applicationGuildCommands(id, guildId), { body: isHomeGuild(guildId) ? body : [] });
   } catch (error) {
     if (error instanceof Error && error.message.includes('Missing Access')) {
       throw new Error(

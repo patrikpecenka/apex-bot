@@ -11,17 +11,22 @@
     "start": "node --experimental-strip-types --env-file-if-exists=.env src/index.ts",
     "start:test": "node --experimental-strip-types --env-file-if-exists=.env.test src/index.ts",
     "send": "node --experimental-strip-types --env-file-if-exists=.env src/send.ts",
+    "post": "node --experimental-strip-types --env-file-if-exists=.env src/postMessage.ts",
     "diag": "node --experimental-strip-types --env-file-if-exists=.env src/diag.ts",
     "deploy": "node --experimental-strip-types --env-file-if-exists=.env src/deploy-commands.ts",
     "deploy:test": "node --experimental-strip-types --env-file-if-exists=.env.test src/deploy-commands.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "check": "node --experimental-strip-types src/paymentQr.check.ts"
   },
   "dependencies": {
     "@napi-rs/canvas": "^1.0.5",
-    "discord.js": "^14.27.0"
+    "discord.js": "^14.27.0",
+    "postgres": "^3.4.9",
+    "qrcode": "^1.5.4"
   },
   "devDependencies": {
     "@types/node": "^26.1.2",
+    "@types/qrcode": "^1.5.6",
     "typescript": "^7.0.2"
   }
 }

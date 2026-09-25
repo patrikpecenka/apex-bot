@@ -1,56 +1,55 @@
 import { Client, Events, GatewayIntentBits, MessageFlags, Partials } from 'discord.js';
-import { rankPickerEnabled, token } from './config.ts';
+import { anyVoiceHubs, rankPickerEnabled, token, welcomeDmEnabled } from './config.ts';
 import { commandsByName } from './commands/registry.ts';
+import { handleComponent } from './components/registry.ts';
 import { registerReactionRoles } from './reactionRoles.ts';
 import { registerCommandsToGuild } from './commandDeploy.ts';
 import { buildMapRotationMessage, fetchMapRotation } from './mapRotation.ts';
 import { allMapRotationMessages, clearMapRotationMessage } from './mapRotationStore.ts';
+import { registerLiveMessage, startLiveMessages } from './liveMessages.ts';
+import { registerTempVoice, sweepTempRooms } from './tempVoice.ts';
+import { registerWelcomeDm } from './welcome.ts';
+import { registerServerSync } from './discordServers.ts';
+// Imported for the side effect of registering its live message on the loop.
+import './predator.ts';
+// Same for tournament sign-ups (a no-op unless DATABASE_URL is set).
+import './tournamentSignup.ts';
 
 // Guilds is enough to see servers and their channels. Reading message text
 // would additionally need the privileged MessageContent intent, which has to be
 // enabled in the Developer Portal first.
+const intents = [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessageReactions];
+
+// Only asked for when the feature that needs it is on: an intent the Developer
+// Portal hasn't granted (GuildMembers) makes login fail outright, and one we
+// don't use is a needless event firehose.
+if (anyVoiceHubs) intents.push(GatewayIntentBits.GuildVoiceStates);
+if (welcomeDmEnabled) intents.push(GatewayIntentBits.GuildMembers);
+
 const client = new Client({
-  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessageReactions],
+  intents,
   // Reaction events on messages posted before the last restart arrive partial;
   // without these the rank picker would only work until the bot restarts.
   partials: [Partials.Message, Partials.Channel, Partials.Reaction, Partials.User],
 });
 
 if (rankPickerEnabled) registerReactionRoles(client);
+if (anyVoiceHubs) registerTempVoice(client);
+if (welcomeDmEnabled) registerWelcomeDm(client);
+// Which servers the bot is in and where it may post (a no-op unless DATABASE_URL is set).
+registerServerSync(client);
 
-
-let refreshingMapRotations = false;
-
-async function refreshMapRotations(): Promise<void> {
-  // A stalled fetch can outlast the interval; skip rather than pile up.
-  if (refreshingMapRotations) return;
-  refreshingMapRotations = true;
-
-  try {
-    const entries = Object.entries(await allMapRotationMessages());
-    if (entries.length === 0) return;
-
-    const rotation = await fetchMapRotation();
-    const rendered = await buildMapRotationMessage(rotation, Date.now());
-
-    for (const [guildId, { channelId, messageId }] of entries) {
-      const channel = await client.channels.fetch(channelId).catch(() => null);
-      const message = channel?.isTextBased()
-        ? await channel.messages.fetch(messageId).catch(() => null)
-        : null;
-      if (!message) {
-        await clearMapRotationMessage(guildId);
-        continue;
-      }
-
-      await message.edit(rendered).catch(() => {});
-    }
-  } catch (error) {
-    console.error('Map rotation refresh failed:', error);
-  } finally {
-    refreshingMapRotations = false;
-  }
-}
+// The map rotation's own live message. Everything else that ticks registers
+// itself from its own module.
+registerLiveMessage({
+  name: 'Map rotation refresh',
+  intervalMs: 60_000,
+  store: {
+    all: allMapRotationMessages,
+    remove: clearMapRotationMessage,
+  },
+  render: async () => buildMapRotationMessage(await fetchMapRotation(), Date.now()),
+});
 
 client.once(Events.ClientReady, async (readyClient) => {
   console.log(`Logged in as ${readyClient.user.tag}`);
@@ -59,11 +58,36 @@ client.once(Events.ClientReady, async (readyClient) => {
     console.log(`  - ${guild.name} (${guild.id})`);
   }
 
-  setInterval(() => void refreshMapRotations(), 60_000);
-  void refreshMapRotations();
+  // Rooms whose last member left while the bot was down would otherwise sit
+  // there forever — nothing will fire a voice event for them again.
+  if (anyVoiceHubs) {
+    await sweepTempRooms(readyClient).catch((error: unknown) => {
+      console.error('Squad room startup sweep failed:', error);
+    });
+  }
+
+  startLiveMessages(readyClient);
 });
 
 client.on(Events.InteractionCreate, async (interaction) => {
+  if (interaction.isMessageComponent() || interaction.isModalSubmit()) {
+    try {
+      await handleComponent(interaction);
+    } catch (error) {
+      console.error(`Component ${interaction.customId} failed:`, error);
+      const message = {
+        content: 'Něco se pokazilo.',
+        flags: MessageFlags.Ephemeral,
+      } as const;
+      if (interaction.deferred || interaction.replied) {
+        await interaction.followUp(message).catch(() => {});
+      } else {
+        await interaction.reply(message).catch(() => {});
+      }
+    }
+    return;
+  }
+
   if (!interaction.isChatInputCommand()) return;
 
   const command = commandsByName.get(interaction.commandName);
@@ -76,7 +100,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
     await command.execute(interaction);
   } catch (error) {
     console.error(`/${interaction.commandName} failed:`, error);
-    const message = { content: 'Something went wrong running that command.', flags: MessageFlags.Ephemeral } as const;
+    const message = { content: 'Něco se při spuštění příkazu pokazilo.', flags: MessageFlags.Ephemeral } as const;
     if (interaction.deferred || interaction.replied) {
       await interaction.followUp(message).catch(() => {});
     } else {
