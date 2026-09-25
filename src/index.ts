@@ -1,5 +1,5 @@
 import { Client, Events, GatewayIntentBits, MessageFlags, Partials } from 'discord.js';
-import { anyVoiceHubs, rankPickerEnabled, token, welcomeDmEnabled } from './config.ts';
+import { anyVoiceHubs, databaseUrl, rankPickerEnabled, token, welcomeDmEnabled } from './config.ts';
 import { commandsByName } from './commands/registry.ts';
 import { handleComponent } from './components/registry.ts';
 import { registerReactionRoles } from './reactionRoles.ts';
@@ -57,6 +57,12 @@ client.once(Events.ClientReady, async (readyClient) => {
   for (const guild of readyClient.guilds.cache.values()) {
     console.log(`  - ${guild.name} (${guild.id})`);
   }
+  // Without it tournaments and the website's server list do nothing, silently - so say which database, or that there is none.
+  console.log(
+    databaseUrl
+      ? `Tournament database: ${new URL(databaseUrl).hostname} (server sync, sign-up cards, payments on)`
+      : "Tournament database: none - DATABASE_URL is not set, so server sync, sign-up cards and payments are off.",
+  );
 
   // Rooms whose last member left while the bot was down would otherwise sit
   // there forever — nothing will fire a voice event for them again.

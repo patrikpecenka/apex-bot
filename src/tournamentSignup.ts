@@ -73,6 +73,8 @@ type Tournament = {
   captain_role_id: string | null;
   /** How the card looks, from the website's builder; null = the defaults. */
   announcement: Partial<Announcement> | null;
+  /** The website it was created on; null = SITE_URL. */
+  site_url: string | null;
 };
 
 /** One card: a tournament announced in a community (tournament_post). */
@@ -158,9 +160,16 @@ export type RoleCounts = Record<Role, number> & {
 
 const captainRoleName = 'Captain';
 
-/** Where a player creates their profile, and can sign up without Discord. */
-const joinUrl = (tournamentId: string) => `${siteUrl}/join/${tournamentId}`;
-const tournamentUrl = (tournamentId: string) => `${siteUrl}/t/${tournamentId}`;
+/**
+ * Links go to the website the tournament was created on (dev.tournevo.com or
+ * tournevo.com - the website writes its address into site_url), SITE_URL for
+ * tournaments from before that.
+ */
+type Site = { id: string; site_url?: string | null };
+const site = (t: Site) => (t.site_url || siteUrl).replace(/\/$/, '');
+/** Signs a player up on the website: sign-in, a profile if they have none, then straight into the tournament. */
+const joinUrl = (t: Site) => `${site(t)}/join/${t.id}`;
+const tournamentUrl = (t: Site) => `${site(t)}/t/${t.id}`;
 
 /** open, and not past the sign-up deadline the organizer set. */
 const takingSignUps = (t: Tournament) =>
@@ -177,7 +186,6 @@ const texts = {
   deadline: 'Registrace do',
   entryFee: 'Startovné',
   prizePool: 'Ceny',
-  website: 'Registrace na webu',
   createTeam: 'Založit tým na webu',
   teamSize: (n: number) => (n === 1 ? 'Solo' : n === 2 ? 'Duo' : n === 3 ? 'Trio' : `${n} hráčů`),
   formation: { premade: 'vlastní tým', random: 'náhodné týmy', captains: 'kapitáni + hráči' } satisfies Record<Formation, string>,
@@ -192,17 +200,15 @@ const texts = {
   closed: 'Registrace jsou uzavřené.',
   over: 'Turnaj je ukončený.',
   full: 'Turnaj je plný, i všechna místa pro náhradníky jsou obsazená.',
-  teamRequired: (tournamentId: string) =>
-    `Tenhle turnaj se hraje v týmech. Založ tým nebo se přidej přes pozvánku od spoluhráče:\n${tournamentUrl(tournamentId)}`,
+  teamRequired: 'Tenhle turnaj se hraje v týmech – tým založíš nebo se k němu přidáš na webu.',
+  openTournament: 'Otevřít turnaj',
   ineligible: 'Tvůj rank nesplňuje podmínky tohohle turnaje.',
   conflict: (other: string | null) =>
     `Ten den už hraješ${other ? ` **${other}**` : ' jiný turnaj'} – dva turnaje v jeden den nejdou.`,
   unavailable: 'Registrace teď nejsou dostupné, zkus to prosím za chvíli.',
   gone: 'Tenhle turnaj už neexistuje.',
-  noProfile: (tournamentId: string) =>
-    'Nejdřív potřebuješ profil na webu – přihlas se Discordem a zadej nick ve hře a rank:\n' +
-    `${joinUrl(tournamentId)}\n` +
-    'Registraci můžeš dokončit hned tam, nebo se sem vrátit a kliknout na **Registrovat**.',
+  noProfile: 'Ještě nemáš profil – jedním klikem se přihlásíš a registrace se dokončí na webu.',
+  finishOnWeb: 'Dokončit registraci',
   roleName: { captain: 'kapitán', player: 'hráč', substitute: 'náhradník' } satisfies Record<Role, string>,
   roleHeading: { captain: 'Kapitáni', player: 'Hráči', substitute: 'Náhradníci' } satisfies Record<Role, string>,
   registered: (name: string, role: Role) => `Jsi zaregistrovaný do **${name}** jako **${texts.roleName[role]}**.`,
@@ -331,7 +337,7 @@ function renderCard(t: Tournament, counts: RoleCounts, postedAt: Date): BaseMess
   const embed = new EmbedBuilder()
     .setColor(color)
     .setTitle(a.title.trim() || t.name)
-    .setURL(tournamentUrl(t.id))
+    .setURL(tournamentUrl(t))
     .addFields(fields.slice(0, 25));
   const description = [status, body].filter(Boolean).join('\n\n');
   if (description) embed.setDescription(description);
@@ -342,19 +348,16 @@ function renderCard(t: Tournament, counts: RoleCounts, postedAt: Date): BaseMess
   if (a.timestamp === 'start' && t.starts_at) embed.setTimestamp(new Date(t.starts_at));
   if (a.timestamp === 'posted') embed.setTimestamp(postedAt);
 
-  // Teams are made on the website, so a premade card only links there.
+  // One button. Teams are made on the website, so a premade card links to the tournament there;
+  // everyone else signs up right here (a player without a profile is sent to finish it on the web).
   const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
     t.team_formation === 'premade'
-      ? new ButtonBuilder().setURL(tournamentUrl(t.id)).setLabel(a.buttonLabel || texts.createTeam).setStyle(ButtonStyle.Link)
+      ? new ButtonBuilder().setURL(tournamentUrl(t)).setLabel(a.buttonLabel || texts.createTeam).setStyle(ButtonStyle.Link)
       : new ButtonBuilder()
           .setCustomId(componentId('tournament', 'register', t.id))
           .setLabel(a.buttonLabel || texts.register)
           .setStyle(ButtonStyle.Success)
           .setDisabled(everythingFull(t, counts)),
-    // Second way in, and the only one for a player with no profile yet.
-    ...(t.team_formation === 'premade'
-      ? []
-      : [new ButtonBuilder().setURL(joinUrl(t.id)).setLabel(texts.website).setStyle(ButtonStyle.Link)]),
   );
   const mention = a.mention === 'none' ? null : `@${a.mention}`;
   const content = [mention, a.content.trim()].filter(Boolean).join(' ');
@@ -477,13 +480,29 @@ async function handleRegisterButton(
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   const result = await register(tournamentId, interaction.user.id);
 
+  // Discord cannot open a page from a button press - the next best thing is one button that does.
+  if (result.outcome === 'no_profile' || result.outcome === 'team_required') {
+    const [row] = await sql!<{ site_url: string | null }[]>`select site_url from tournament where id = ${tournamentId}`;
+    const where = { id: tournamentId, site_url: row?.site_url };
+    const noProfile = result.outcome === 'no_profile';
+    await interaction.editReply({
+      content: noProfile ? texts.noProfile : texts.teamRequired,
+      components: [
+        new ActionRowBuilder<ButtonBuilder>().addComponents(
+          new ButtonBuilder()
+            .setURL(noProfile ? joinUrl(where) : tournamentUrl(where))
+            .setLabel(noProfile ? texts.finishOnWeb : texts.openTournament)
+            .setStyle(ButtonStyle.Link),
+        ),
+      ],
+    });
+    return;
+  }
   if (result.outcome !== 'registered' && result.outcome !== 'already') {
     const message = {
-      no_profile: texts.noProfile(tournamentId),
       closed: texts.closed,
       full: texts.full,
       team_full: texts.full,
-      team_required: texts.teamRequired(tournamentId),
       ineligible: texts.ineligible,
       conflict: texts.conflict(result.detail),
       not_found: texts.gone,
