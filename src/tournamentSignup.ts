@@ -225,10 +225,10 @@ const texts = {
   payment: (t: Tournament, reg: Registration) =>
     [
       `**${t.name}** – platba startovného`,
-      `Částka: **${t.entry_fee_czk} CZK**`,
+      `Částka: **${t.entry_fee_czk} Kč**`,
       `Účet: \`${t.payment_iban || paymentIban}\``,
       `Variabilní symbol: \`${reg.variable_symbol}\``,
-      `Zpráva: \`${qrMessage(reg.nickname, reg.max_rank)}\``,
+      `Zpráva: \`${qrMessage(reg.nickname, t.name)}\``,
       'Naskenuj QR kód v bankovní aplikaci. Platbu potvrzuje organizátor ručně, může to trvat pár dní.',
     ].join('\n'),
 };
@@ -375,7 +375,7 @@ async function paymentReply(t: Tournament, reg: Registration): Promise<BaseMessa
     iban: t.payment_iban || paymentIban,
     amountCzk: t.entry_fee_czk ?? 0,
     variableSymbol: reg.variable_symbol,
-    message: qrMessage(reg.nickname, reg.max_rank),
+    message: qrMessage(reg.nickname, t.name),
   });
   return {
     content: texts.payment(t, reg),

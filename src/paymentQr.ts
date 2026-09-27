@@ -13,9 +13,28 @@ export type Payment = {
   message: string;
 };
 
-/** What the payer's bank statement shows next to the payment. */
-export function qrMessage(nickname: string, rank: string): string {
-  return `${nickname} ${rank}`;
+/** SPAYD's cap on the message for the recipient. */
+const MAX_MESSAGE = 60;
+
+/** Czech banks often mangle accents in QR payments, and "*" separates SPAYD fields. */
+const plain = (text: string) =>
+  text
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[*|]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+/**
+ * What the organizer reads in their statement: "Ghost | Podzimni Liga #7 | Tournevo".
+ * Same rules as the website's (packages/api/src/payment-message.ts) - keep them in step.
+ */
+export function qrMessage(nickname: string, tournament: string): string {
+  const nick = plain(nickname).slice(0, 32);
+  const name = plain(tournament);
+  const full = `${nick} | ${name} | Tournevo`;
+  if (full.length <= MAX_MESSAGE) return full;
+  return `${nick} | ${name}`.slice(0, MAX_MESSAGE).trimEnd();
 }
 
 export function spayd({ iban, amountCzk, variableSymbol, message }: Payment): string {
