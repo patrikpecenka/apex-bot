@@ -55,6 +55,14 @@ async function saveGuild(guild: Guild, joined = false): Promise<void> {
     where s.guild_id = ${guild.id} and s.status = 'active'
     on conflict (discord_guild_id) where discord_guild_id is not null do update set name = excluded.name`;
   await saveChannels(guild);
+  await saveMemberCount(guild).catch(logged(`Member count for ${guild.name}`));
+}
+
+/** How many people are on the server. Discord's approximate count needs no member intent. */
+async function saveMemberCount(guild: Guild): Promise<void> {
+  const fresh = await guild.fetch().catch(() => guild);
+  const count = fresh.approximateMemberCount ?? fresh.memberCount;
+  await sql!`update discord_server set member_count = ${count} where guild_id = ${guild.id}`;
 }
 
 /** The whole channel list of one server, whether the bot may post in each, and its server-wide permissions. */
