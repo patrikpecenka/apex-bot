@@ -68,7 +68,7 @@ async function requestMapRotation(): Promise<MapRotationData> {
 export async function fetchMapRotation(): Promise<MapRotationData> {
   if (!apexApiKey) {
     throw new Error(
-      'Chybí APEX_API_KEY. Klíč zdarma je na https://api.mozambiquehe.re/getkey — nastav ho v env.',
+      'Chybí APEX_API_KEY. Klíč zdarma je na https://api.mozambiquehe.re/getkey – nastav ho v env.',
     );
   }
 
@@ -247,7 +247,7 @@ async function drawNextStrip(ctx: SKRSContext2D, y: number, next: MapWindow): Pr
 
   ctx.fillStyle = '#d5dbe3';
   ctx.font = '28px "Bebas Neue"';
-  ctx.fillText(`${formatClock(next.start)} - ${formatClock(next.end)}`, groupX, midY + 28);
+  ctx.fillText(`${formatClock(next.start)}–${formatClock(next.end)}`, groupX, midY + 28);
 }
 
 async function renderModeCard(label: string, period: MapPeriod, nowMs: number): Promise<Buffer> {

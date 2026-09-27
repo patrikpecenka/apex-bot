@@ -9,7 +9,7 @@
 import assert from 'node:assert/strict';
 import { spayd, paymentQrPng, qrMessage } from './paymentQr.ts';
 
-assert.equal(qrMessage('Zephyr', 'Master'), 'Zephyr Master');
+assert.equal(qrMessage('Zephyr', 'Podzimní Liga #7'), 'Zephyr | Podzimni Liga #7 | Tournevo');
 
 assert.equal(
   spayd({ iban: 'CZ65 0800 0000 1920 0014 5399', amountCzk: 250, variableSymbol: 100001, message: 'nick*name Master' }),

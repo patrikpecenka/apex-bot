@@ -63,8 +63,8 @@ function players(count: number): string {
 }
 
 const texts = {
-  title: (open: number, platform: string) => `Hledám ${players(open)} — ${platform}`,
-  full: (platform: string) => `Squad je plný — ${platform}`,
+  title: (open: number, platform: string) => `Hledám ${players(open)} – ${platform}`,
+  full: (platform: string) => `Squad je plný – ${platform}`,
   closed: 'Squad zavřený',
   expired: 'Squad vypršel',
   squad: 'Squad',

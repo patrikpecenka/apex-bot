@@ -187,10 +187,10 @@ const texts = {
   entryFee: 'Startovné',
   prizePool: 'Ceny',
   createTeam: 'Založit tým na webu',
-  teamSize: (n: number) => (n === 1 ? 'Solo' : n === 2 ? 'Duo' : n === 3 ? 'Trio' : `${n} hráčů`),
+  teamSize: (n: number) => (n === 1 ? 'Solo' : n === 2 ? 'Duo' : n === 3 ? 'Trio' : `${n} ${n < 5 ? 'hráči' : 'hráčů'}`),
   formation: { premade: 'vlastní tým', random: 'náhodné týmy', captains: 'kapitáni + hráči' } satisfies Record<Formation, string>,
   liveLine: (done: number, total: number, leader: { name: string; points: number } | null) =>
-    [`Turnaj právě běží · match ${Math.min(done + 1, total)}/${total}`, leader ? `vede ${leader.name} ${leader.points}` : null]
+    [`Turnaj právě běží · zápas ${Math.min(done + 1, total)}/${total}`, leader ? `vede ${leader.name} (${leader.points} b.)` : null]
       .filter(Boolean)
       .join(' · '),
   teamsHeading: 'Týmy',
@@ -225,10 +225,10 @@ const texts = {
   payment: (t: Tournament, reg: Registration) =>
     [
       `**${t.name}** – platba startovného`,
-      `Částka: **${t.entry_fee_czk} CZK**`,
+      `Částka: **${t.entry_fee_czk} Kč**`,
       `Účet: \`${t.payment_iban || paymentIban}\``,
       `Variabilní symbol: \`${reg.variable_symbol}\``,
-      `Zpráva: \`${qrMessage(reg.nickname, reg.max_rank)}\``,
+      `Zpráva: \`${qrMessage(reg.nickname, t.name)}\``,
       'Naskenuj QR kód v bankovní aplikaci. Platbu potvrzuje organizátor ručně, může to trvat pár dní.',
     ].join('\n'),
 };
@@ -375,7 +375,7 @@ async function paymentReply(t: Tournament, reg: Registration): Promise<BaseMessa
     iban: t.payment_iban || paymentIban,
     amountCzk: t.entry_fee_czk ?? 0,
     variableSymbol: reg.variable_symbol,
-    message: qrMessage(reg.nickname, reg.max_rank),
+    message: qrMessage(reg.nickname, t.name),
   });
   return {
     content: texts.payment(t, reg),

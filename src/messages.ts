@@ -274,7 +274,7 @@ function resolveMedia(reference: string, context: RenderContext): string | null 
   const path = join(assetsDir, filename);
 
   if (!existsSync(path)) {
-    context.warnings.push(`obrázek "${filename}" nenalezen v ${assetsDir} — přeskočen`);
+    context.warnings.push(`obrázek "${filename}" nenalezen v ${assetsDir} – přeskočen`);
     return null;
   }
 
@@ -413,7 +413,7 @@ export async function renderMessage(
     // alongside it, so say that plainly instead of letting the API 400.
     if (trimmed(definition.content) || (definition.embeds ?? []).length > 0) {
       throw new Error(
-        `"${key}": "cards" nejde kombinovat s "content" ani "embeds" — Discord je bere jako různé typy zpráv. Rozděl to do dvou položek.`,
+        `"${key}": "cards" nejde kombinovat s "content" ani "embeds" – Discord je bere jako různé typy zpráv. Rozděl to do dvou položek.`,
       );
     }
     const containers: ContainerBuilder[] = [];
@@ -462,7 +462,7 @@ export async function renderMessage(
     : '';
 
   if (embeds.length === 0 && !content) {
-    throw new Error(`"${key}": není co vypsat - nemá "content", "embeds" ani "cards".`);
+    throw new Error(`"${key}": není co vypsat – nemá "content", "embeds" ani "cards".`);
   }
 
   return {

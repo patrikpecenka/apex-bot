@@ -57,7 +57,7 @@ async function requestPredator(): Promise<PredatorData> {
 export async function fetchPredator(): Promise<PredatorData> {
   if (!apexApiKey) {
     throw new Error(
-      'Chybí APEX_API_KEY. Klíč zdarma je na https://api.mozambiquehe.re/getkey — nastav ho v env.',
+      'Chybí APEX_API_KEY. Klíč zdarma je na https://api.mozambiquehe.re/getkey – nastav ho v env.',
     );
   }
 

@@ -56,7 +56,7 @@ async function requestStatus(): Promise<ServerStatusData> {
 export async function fetchServerStatus(): Promise<ServerStatusData> {
   if (!apexApiKey) {
     throw new Error(
-      'Chybí APEX_API_KEY. Klíč zdarma je na https://api.mozambiquehe.re/getkey — nastav ho v env.',
+      'Chybí APEX_API_KEY. Klíč zdarma je na https://api.mozambiquehe.re/getkey – nastav ho v env.',
     );
   }
 
@@ -111,7 +111,7 @@ export function buildServerStatusEmbed(data: ServerStatusData): EmbedBuilder {
         : problems
             .map(
               ([name, region]) =>
-                `${stateIcons[normalize(region.Status)] ?? '⚪'} ${name} — ${normalize(region.Status)}`,
+                `${stateIcons[normalize(region.Status)] ?? '⚪'} ${name} – ${normalize(region.Status)}`,
             )
             .join('\n');
 
@@ -126,7 +126,7 @@ export function buildServerStatusEmbed(data: ServerStatusData): EmbedBuilder {
     .setColor(anyDown ? colors.down : anySlow ? colors.slow : colors.up)
     .setDescription(
       anyDown
-        ? 'Něco je mimo — není to jen u tebe.'
+        ? 'Něco je mimo – není to jen u tebe.'
         : anySlow
           ? 'Některé regiony jsou pomalé nebo přetížené.'
           : 'Všechno vypadá v pořádku.',
