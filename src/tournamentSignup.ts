@@ -187,10 +187,10 @@ const texts = {
   entryFee: 'Startovné',
   prizePool: 'Ceny',
   createTeam: 'Založit tým na webu',
-  teamSize: (n: number) => (n === 1 ? 'Solo' : n === 2 ? 'Duo' : n === 3 ? 'Trio' : `${n} hráčů`),
+  teamSize: (n: number) => (n === 1 ? 'Solo' : n === 2 ? 'Duo' : n === 3 ? 'Trio' : `${n} ${n < 5 ? 'hráči' : 'hráčů'}`),
   formation: { premade: 'vlastní tým', random: 'náhodné týmy', captains: 'kapitáni + hráči' } satisfies Record<Formation, string>,
   liveLine: (done: number, total: number, leader: { name: string; points: number } | null) =>
-    [`Turnaj právě běží · match ${Math.min(done + 1, total)}/${total}`, leader ? `vede ${leader.name} ${leader.points}` : null]
+    [`Turnaj právě běží · zápas ${Math.min(done + 1, total)}/${total}`, leader ? `vede ${leader.name} (${leader.points} b.)` : null]
       .filter(Boolean)
       .join(' · '),
   teamsHeading: 'Týmy',

@@ -34,9 +34,9 @@ function pruneSentence(prune: PruneSummary): string | null {
   if (!prune) return null;
   const tiers = prune.tiers.map((tier) => tier.toLowerCase());
   const range =
-    tiers.length > 1 ? `${tiers[0]} - ${tiers[tiers.length - 1]}` : tiers[0];
+    tiers.length > 1 ? `${tiers[0]} – ${tiers[tiers.length - 1]}` : tiers[0];
   return (
-    `Z důvodu nedostatku místa pro role, bylo třeba umazat role ze season ${prune.season} ` +
+    `Kvůli nedostatku místa pro role bylo nutné smazat role ze season ${prune.season} ` +
     `(${range}). Diamond, Master a Apex Predator zůstávají přiřazeny.`
   );
 }
@@ -61,7 +61,7 @@ export function rankTexts(
   if (prunedNote) lines.push('', prunedNote);
 
   return {
-    title: `Season update - Season ${season}`,
+    title: `Season update – Season ${season}`,
     description: lines.join('\n'),
   };
 }
@@ -82,9 +82,9 @@ export function buildSeasonStartEmbed(season: number): EmbedBuilder {
     .setTitle(`↓ ↓ ↓  -----  Season ${season} starts here  -----  ↓ ↓ ↓`)
     .setDescription(
       [
-        'Room pouze pro ověření APEX PREDATOR A MASTER',
+        'Roomka jen pro ověření ranků Apex Predator a Master',
         '',
-        `Ostatní ranky můžete přiřadit svépomocí v roomce <#${defaultChannels.rankPicker}>`,
+        `Ostatní ranky si přiřadíš sám v roomce <#${defaultChannels.rankPicker}>.`,
       ].join('\n'),
     )
     .setColor(seasonStartEmbedColor);
@@ -165,7 +165,7 @@ export async function closeRankMessage(
 
   const embed = EmbedBuilder.from(message.embeds[0] ?? {})
     .setColor(0x4f545c)
-    .setFooter({ text: `Season ${previous.season} uzavřena — role už nelze přiřadit.` });
+    .setFooter({ text: `Season ${previous.season} uzavřena – role už nejde přiřadit.` });
 
   await message.edit({ embeds: [embed] }).catch(() => {});
   await message.reactions.removeAll().catch(() => {});

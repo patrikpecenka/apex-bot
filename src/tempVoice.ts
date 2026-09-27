@@ -95,7 +95,7 @@ async function generateCode(guildId: string): Promise<string> {
 }
 
 function roomName(displayName: string, locked: boolean): string {
-  return `${locked ? lockPrefix : ''}Squad — ${displayName}`.slice(0, 100);
+  return `${locked ? lockPrefix : ''}Squad – ${displayName}`.slice(0, 100);
 }
 
 async function createRoom(state: VoiceState, locked: boolean): Promise<void> {
@@ -164,7 +164,7 @@ async function createRoom(state: VoiceState, locked: boolean): Promise<void> {
     const dm = await member
       .send(
         `Tvoje privátní squad roomka je připravená: ${room.url}\n` +
-          `Kód roomky: **${code}** — kdo napíše \`/join code:${code}\`, dostane se dovnitř.\n` +
+          `Kód roomky: **${code}** – kdo napíše \`/join code:${code}\`, dostane se dovnitř.\n` +
           'Lidi můžeš přidávat i přímo přes `/room invite`.',
       )
       .catch(() => null);
