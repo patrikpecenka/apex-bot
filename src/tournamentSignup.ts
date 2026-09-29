@@ -171,9 +171,11 @@ const site = (t: Site) => (t.site_url || siteUrl).replace(/\/$/, '');
 const joinUrl = (t: Site) => `${site(t)}/join/${t.id}`;
 const tournamentUrl = (t: Site) => `${site(t)}/t/${t.id}`;
 
-/** open, and not past the sign-up deadline the organizer set. */
-const takingSignUps = (t: Tournament) =>
-  t.status === 'open' && (!t.registration_closes_at || new Date(t.registration_closes_at).getTime() > Date.now());
+/** open, and not past the sign-up deadline - or, with none set, the start (as join_block() decides). */
+const takingSignUps = (t: Tournament) => {
+  const deadline = t.registration_closes_at ?? t.starts_at;
+  return t.status === 'open' && (!deadline || new Date(deadline).getTime() > Date.now());
+};
 
 const enabled = Boolean(sql);
 
