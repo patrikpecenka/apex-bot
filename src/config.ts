@@ -3,6 +3,14 @@
  * `.env` via node's built-in `--env-file-if-exists` flag, so no dotenv needed.
  */
 
+// The tournament database stores times as UTC without a zone attached, and a
+// time without a zone is read as the machine's local time. On a server set to
+// Prague that turned a 23:15 start (21:15 UTC) into 21:15 in every Discord
+// timestamp. The bot's clock is UTC, wherever it runs; anything shown to people
+// names its time zone itself (map rotation: Europe/Prague) or is a Discord
+// <t:…> timestamp, which each reader sees in their own time.
+process.env.TZ = 'UTC';
+
 function required(name: string): string {
   const value = process.env[name];
   if (!value) {
