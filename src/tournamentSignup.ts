@@ -171,7 +171,7 @@ type Site = { id: string; site_url?: string | null };
 const site = (t: Site) => (t.site_url || siteUrl).replace(/\/$/, '');
 /** Signs a player up on the website: sign-in, a profile if they have none, then straight into the tournament. */
 const joinUrl = (t: Site) => `${site(t)}/join/${t.id}`;
-const tournamentUrl = (t: Site) => `${site(t)}/t/${t.id}`;
+const tournamentUrl = (t: Site) => `${site(t)}/tournament/${t.id}`;
 
 /** open, and not past the sign-up deadline - or, with none set, the start (as join_block() decides). */
 const takingSignUps = (t: Tournament) => {

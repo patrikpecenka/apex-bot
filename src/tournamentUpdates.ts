@@ -99,7 +99,7 @@ async function sendReminders(client: Client): Promise<void> {
       t,
       [
         `⏰ **${t.name}** začíná <t:${unix(t.starts_at)}:R> (v <t:${unix(t.starts_at)}:t>). Připravte se – za chvíli se jde na to!`,
-        `Podrobnosti a soupiska: ${site(t)}/t/${t.id}`,
+        `Podrobnosti a soupiska: ${site(t)}/tournament/${t.id}`,
       ].join('\n'),
     );
     // Kept so the reminder can be taken down when the tournament starts.
@@ -155,7 +155,7 @@ async function startTournaments(client: Client): Promise<void> {
       t,
       [
         `🔴 **${t.name}** právě začíná! Tvůj tým a kód do lobby ti pošlu do DM, jakmile je organizátor zadá.`,
-        `Průběžné výsledky: ${site(t)}/t/${t.id}`,
+        `Průběžné výsledky: ${site(t)}/tournament/${t.id}`,
       ].join('\n'),
     );
   }
@@ -220,7 +220,7 @@ async function sendLobbyCodes(client: Client): Promise<void> {
       `V custom lobby se přidej do **Team ${row.slot}**.`,
       `Kód do lobby: **\`${row.code}\`**`,
       'Kód nikomu dalšímu neposílej – každý hráč ho má od bota sám.',
-      `Turnaj: ${site(row)}/t/${row.tournament_id}`,
+      `Turnaj: ${site(row)}/tournament/${row.tournament_id}`,
     ].join('\n');
     const user = await client.users.fetch(row.discord_id).catch(() => null);
     const sent = user ? await user.send(text).then(() => true).catch(() => false) : false;
@@ -287,7 +287,7 @@ function dueResults() {
 
 async function postResult(client: Client, row: Due): Promise<void> {
   const final = row.result_key === 'final';
-  const page = `${site(row)}/t/${row.tournament_id}`;
+  const page = `${site(row)}/tournament/${row.tournament_id}`;
   const image = new URL(`${site(row)}/api/results/${row.tournament_id}`);
   if (!final) image.searchParams.set('match', String(row.match_number));
   image.searchParams.set('v', row.content_key.slice(0, 12));
