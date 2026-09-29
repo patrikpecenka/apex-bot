@@ -14,6 +14,7 @@ import { registerServerSync } from './discordServers.ts';
 import './predator.ts';
 // Same for tournament sign-ups (a no-op unless DATABASE_URL is set).
 import './tournamentSignup.ts';
+import './tournamentUpdates.ts';
 import './retention.ts';
 
 // Guilds is enough to see servers and their channels. Reading message text

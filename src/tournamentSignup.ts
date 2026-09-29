@@ -156,6 +156,8 @@ export type RoleCounts = Record<Role, number> & {
   matchesDone: number;
   matchesTotal: number;
   leader: { name: string; points: number } | null;
+  /** Confirmed payments - each adds its entry fee to the prize pool. */
+  paid: number;
 };
 
 const captainRoleName = 'Captain';
@@ -169,7 +171,7 @@ type Site = { id: string; site_url?: string | null };
 const site = (t: Site) => (t.site_url || siteUrl).replace(/\/$/, '');
 /** Signs a player up on the website: sign-in, a profile if they have none, then straight into the tournament. */
 const joinUrl = (t: Site) => `${site(t)}/join/${t.id}`;
-const tournamentUrl = (t: Site) => `${site(t)}/t/${t.id}`;
+const tournamentUrl = (t: Site) => `${site(t)}/tournament/${t.id}`;
 
 /** open, and not past the sign-up deadline - or, with none set, the start (as join_block() decides). */
 const takingSignUps = (t: Tournament) => {
@@ -245,6 +247,7 @@ async function countRoles(db: postgres.Sql | postgres.TransactionSql, tournament
     matchesDone: 0,
     matchesTotal: 0,
     leader: null,
+    paid: 0,
   };
   const rows = await db<{ role: Role; n: number }[]>`
     select role, count(*)::int as n from registration
@@ -256,8 +259,9 @@ async function countRoles(db: postgres.Sql | postgres.TransactionSql, tournament
     from team where tournament_id = ${tournamentId}`;
   counts.teams = teams?.main ?? 0;
   counts.subTeams = teams?.sub ?? 0;
-  const [progress] = await db<{ done: number; total: number; leader: { name: string; points: number } | null }[]>`
+  const [progress] = await db<{ done: number; total: number; paid: number; leader: { name: string; points: number } | null }[]>`
     select
+      (select count(*) from registration where tournament_id = ${tournamentId} and removed_at is null and payment_status = 'paid')::int as paid,
       (select count(*) from match where tournament_id = ${tournamentId} and is_complete)::int as done,
       (select count(*) from match where tournament_id = ${tournamentId})::int as total,
       (select json_build_object('name', tm.name, 'points', sum(sc.total_points)::int)
@@ -269,6 +273,7 @@ async function countRoles(db: postgres.Sql | postgres.TransactionSql, tournament
   counts.matchesDone = progress?.done ?? 0;
   counts.matchesTotal = progress?.total ?? 0;
   counts.leader = progress?.leader ?? null;
+  counts.paid = progress?.paid ?? 0;
   return counts;
 }
 
@@ -277,6 +282,9 @@ function mainFull(t: Tournament, counts: RoleCounts): boolean {
   if (t.team_formation === 'random') return counts.player >= t.max_players;
   return counts.captain >= t.max_captains && counts.player >= t.max_players;
 }
+
+/** Prize pool as the website shows it: the organizer's amount plus the entry fee of every confirmed payment. */
+const prizePool = (t: Tournament, counts: RoleCounts) => (t.prize_pool_czk ?? 0) + (t.entry_fee_czk ?? 0) * counts.paid;
 
 function everythingFull(t: Tournament, counts: RoleCounts): boolean {
   const subs = t.team_formation === 'premade' ? counts.subTeams : counts.substitute;
@@ -312,9 +320,11 @@ function renderCard(t: Tournament, counts: RoleCounts, postedAt: Date): BaseMess
   const a: Announcement = { ...defaultAnnouncement, ...t.announcement };
   const open = takingSignUps(t);
   const status = open
-    ? mainFull(t, counts)
-      ? `**${texts.mainFull}**`
-      : null
+    ? everythingFull(t, counts)
+      ? `**${texts.full}**`
+      : mainFull(t, counts)
+        ? `**${texts.mainFull}**`
+        : null
     : t.status === 'live'
       ? `**${counts.matchesTotal ? texts.liveLine(counts.matchesDone, counts.matchesTotal, counts.leader) : texts.live}**`
       : `**${t.status === 'finished' ? texts.over : texts.closed}**`;
@@ -331,7 +341,8 @@ function renderCard(t: Tournament, counts: RoleCounts, postedAt: Date): BaseMess
     shown('start') && t.starts_at ? field(texts.start, `<t:${unix(t.starts_at)}:f>`) : null,
     shown('deadline') && open && t.registration_closes_at ? field(texts.deadline, `<t:${unix(t.registration_closes_at)}:R>`) : null,
     shown('fee') ? field(texts.entryFee, t.entry_fee_czk ? `${t.entry_fee_czk} Kč` : texts.free) : null,
-    shown('prize') && t.prize_pool_czk ? field(texts.prizePool, `${t.prize_pool_czk.toLocaleString('cs-CZ')} Kč`) : null,
+    // The organizer's prize pool plus every confirmed entry fee - it grows as payments come in.
+    shown('prize') && prizePool(t, counts) ? field(texts.prizePool, `${prizePool(t, counts).toLocaleString('cs-CZ')} Kč`) : null,
     ...(shown('slots') && t.status !== 'live' && t.status !== 'finished' ? slotFields(t, counts, a.autoInline) : []),
     ...a.fields,
   ].filter((f) => f !== null);
@@ -350,16 +361,16 @@ function renderCard(t: Tournament, counts: RoleCounts, postedAt: Date): BaseMess
   if (a.timestamp === 'start' && t.starts_at) embed.setTimestamp(new Date(t.starts_at));
   if (a.timestamp === 'posted') embed.setTimestamp(postedAt);
 
-  // One button. Teams are made on the website, so a premade card links to the tournament there;
-  // everyone else signs up right here (a player without a profile is sent to finish it on the web).
+  // One button, and it always opens the website - a plain link is what everyone
+  // understands. Premade teams are made on the tournament page; everyone else
+  // goes through sign-in and profile straight into the tournament. (Cards posted
+  // before this still carry the old Register button; its handler stays.)
   const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
-    t.team_formation === 'premade'
-      ? new ButtonBuilder().setURL(tournamentUrl(t)).setLabel(a.buttonLabel || texts.createTeam).setStyle(ButtonStyle.Link)
-      : new ButtonBuilder()
-          .setCustomId(componentId('tournament', 'register', t.id))
-          .setLabel(a.buttonLabel || texts.register)
-          .setStyle(ButtonStyle.Success)
-          .setDisabled(everythingFull(t, counts)),
+    new ButtonBuilder()
+      .setURL(t.team_formation === 'premade' ? tournamentUrl(t) : joinUrl(t))
+      .setLabel(a.buttonLabel || (t.team_formation === 'premade' ? texts.createTeam : texts.register))
+      .setStyle(ButtonStyle.Link)
+      .setDisabled(everythingFull(t, counts)),
   );
   const mention = a.mention === 'none' ? null : `@${a.mention}`;
   const content = [mention, a.content.trim()].filter(Boolean).join(' ');
