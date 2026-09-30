@@ -27,7 +27,12 @@ type Task = {
   database?: boolean;
   running: boolean;
   lastRun: number;
+  /** Which run is current - a stalled one that finishes late must not clear a newer one's flag. */
+  runId: number;
 };
+
+/** A run this long is stuck (a request that never answered), not slow: start a new one. */
+const stalledMs = 5 * 60_000;
 
 const tasks: Task[] = [];
 
@@ -38,7 +43,7 @@ export function registerTask(options: {
   run: (client: Client) => Promise<void>;
   database?: boolean;
 }): void {
-  tasks.push({ ...options, running: false, lastRun: 0 });
+  tasks.push({ ...options, running: false, lastRun: 0, runId: 0 });
 }
 
 /** The subset of a JsonStore a live message needs - handy for tests and fakes. */
@@ -85,8 +90,14 @@ export function registerLiveMessage<T extends { channelId: string; messageId: st
 }
 
 async function runTask(task: Task, client: Client): Promise<void> {
-  // A stalled run can outlast the interval; skip rather than pile up.
-  if (task.running || (task.database && databasePaused())) return;
+  // A slow run can outlast the interval; skip rather than pile up - but not
+  // forever: one hung run used to stop the task for good (cards froze).
+  if (task.database && databasePaused()) return;
+  if (task.running) {
+    if (Date.now() - task.lastRun < stalledMs) return;
+    console.warn(`${task.name} has been running for ${Math.round((Date.now() - task.lastRun) / 60_000)} minutes - starting a new run.`);
+  }
+  const runId = ++task.runId;
   task.running = true;
   task.lastRun = Date.now();
 
@@ -102,7 +113,7 @@ async function runTask(task: Task, client: Client): Promise<void> {
       console.error(`${task.name} failed:`, error);
     }
   } finally {
-    task.running = false;
+    if (task.runId === runId) task.running = false;
   }
 }
 

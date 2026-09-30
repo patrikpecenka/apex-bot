@@ -577,7 +577,11 @@ async function refreshCard(client: Client, t: Tournament, counts: RoleCounts, po
 
     const channel = await client.channels.fetch(post.channel_id).catch(() => null);
     const message = channel?.isTextBased() ? await channel.messages.fetch(post.message_id).catch(() => null) : null;
-    if (!message) continue;
+    if (!message) {
+      // Said on the desk rather than skipped quietly - otherwise the card just stops updating.
+      await postFailed(t, post, 'Kartu na Discordu nejde načíst – je smazaná, nebo bot v kanálu nemá „Číst historii zpráv“.');
+      continue;
+    }
     try {
       await message.edit(payload);
       if (post.error) await sql!`update tournament_post set error = null where id = ${post.id}`;
