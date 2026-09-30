@@ -574,6 +574,10 @@ export const handleTournamentComponent: ComponentHandler = async (interaction, a
 
 // Last payload per card, so an unchanged card isn't re-edited every tick.
 const renderedCards = new Map<number, string>();
+// Edits Discord has not answered yet. discord.js sends a message's edits one after
+// another, so a new one behind a stuck one would only wait in line - and the line grew
+// by one every run. The next edit goes out once this one is done (with fresh numbers).
+const editsInFlight = new Set<number>();
 
 const postsOf = (tournamentId: string) => sql!<Post[]>`
   select p.*, c.discord_channel_id as community_channel_id
@@ -594,10 +598,13 @@ async function refreshCard(client: Client, t: Tournament, counts: RoleCounts, po
       await postFailed(t, post, 'Kanál s kartou neexistuje, nebo do něj bot nevidí.');
       continue;
     }
+    if (editsInFlight.has(post.id)) continue;
     try {
+      editsInFlight.add(post.id);
       // Edited by id: no fetch first, so it needs no "Read message history" in the channel.
-      const edited = await withTimeout(`"${t.name}" card ${post.id}: Discord editing the message`, channel.messages.edit(post.message_id, payload), 45_000);
-      if (!edited) continue; // Hung - tried again next run.
+      const edit = channel.messages.edit(post.message_id, payload).finally(() => editsInFlight.delete(post.id));
+      const edited = await withTimeout(`"${t.name}" card ${post.id}: Discord editing the message`, edit, 45_000);
+      if (!edited) continue; // Still with Discord - its result is ignored, the next run sends a fresh one.
       renderedCards.set(post.id, key);
       if (post.error) {
         await sql!`update tournament_post set error = null where id = ${post.id}`;
