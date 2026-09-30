@@ -588,7 +588,7 @@ async function refreshCard(client: Client, t: Tournament, counts: RoleCounts, po
     const key = JSON.stringify(payload);
     if (renderedCards.get(post.id) === key) continue;
 
-    const channel = await client.channels.fetch(post.channel_id).catch(() => null);
+    const channel = await withTimeout(`"${t.name}" card ${post.id}: loading its channel`, client.channels.fetch(post.channel_id).catch(() => null), 20_000);
     if (!channel?.isTextBased()) {
       // Said on the desk rather than skipped quietly - otherwise the card just stops updating.
       await postFailed(t, post, 'Kanál s kartou neexistuje, nebo do něj bot nevidí.');
@@ -596,7 +596,8 @@ async function refreshCard(client: Client, t: Tournament, counts: RoleCounts, po
     }
     try {
       // Edited by id: no fetch first, so it needs no "Read message history" in the channel.
-      await channel.messages.edit(post.message_id, payload);
+      const edited = await withTimeout(`"${t.name}" card ${post.id}: Discord editing the message`, channel.messages.edit(post.message_id, payload), 45_000);
+      if (!edited) continue; // Hung - tried again next run.
       renderedCards.set(post.id, key);
       if (post.error) {
         await sql!`update tournament_post set error = null where id = ${post.id}`;
@@ -760,7 +761,8 @@ async function sync(client: Client): Promise<void> {
   // used to stall the whole sync, so no card updated any more.
   for (const t of tournaments) {
     try {
-      await withTimeout(`Card of "${t.name}"`, syncTournament(client, t));
+      // Longer than its steps together, so the step that hung is the one named in the log.
+      await withTimeout(`Card of "${t.name}"`, syncTournament(client, t), 120_000);
     } catch (error) {
       console.error(`Tournament sync for "${t.name}" failed:`, error);
     }
@@ -797,13 +799,17 @@ async function sync(client: Client): Promise<void> {
 
 /** One tournament's cards: post the missing ones, bring the rest up to date - or retire them. */
 async function syncTournament(client: Client, t: Tournament): Promise<void> {
-  const posts = await postsOf(t.id);
+  const posts = await withTimeout(`"${t.name}": reading its cards from the database`, postsOf(t.id), 15_000);
+  if (!posts) return;
   if (t.status === 'finished') return archive(client, t, posts);
   // A card for each community it was announced in - new ones only while sign-ups are open.
   if (t.status === 'open') {
-    for (const post of posts) if (!post.message_id) await publish(client, t, post);
+    for (const post of posts) {
+      if (!post.message_id) await withTimeout(`"${t.name}" card ${post.id}: posting it`, publish(client, t, post), 45_000);
+    }
   }
-  await refreshCard(client, t, await countRoles(sql!, t.id), posts);
+  const counts = await withTimeout(`"${t.name}": counting sign-ups in the database`, countRoles(sql!, t.id), 15_000);
+  if (counts) await refreshCard(client, t, counts, posts);
 }
 
 if (enabled) {
