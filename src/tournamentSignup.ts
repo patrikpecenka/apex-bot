@@ -38,7 +38,7 @@ import { paymentIban, siteUrl } from './config.ts';
 import { sql } from './db.ts';
 import type postgres from 'postgres';
 import { componentId, type ComponentHandler } from './components/ids.ts';
-import { registerTask } from './liveMessages.ts';
+import { registerTask, withTimeout } from './liveMessages.ts';
 import { paymentQrPng, qrMessage } from './paymentQr.ts';
 
 export type Role = 'captain' | 'player' | 'substitute';
@@ -756,18 +756,11 @@ async function sync(client: Client): Promise<void> {
     left join game g on g.id = t.game_id
     where (t.status <> 'finished' and t.visibility = 'public') or t.captain_role_id is not null`;
 
+  // Each step on its own clock: one that hangs (a request Discord never answers)
+  // used to stall the whole sync, so no card updated any more.
   for (const t of tournaments) {
     try {
-      const posts = await postsOf(t.id);
-      if (t.status === 'finished') {
-        await archive(client, t, posts);
-        continue;
-      }
-      // A card for each community it was announced in - new ones only while sign-ups are open.
-      if (t.status === 'open') {
-        for (const post of posts) if (!post.message_id) await publish(client, t, post);
-      }
-      await refreshCard(client, t, await countRoles(sql!, t.id), posts);
+      await withTimeout(`Card of "${t.name}"`, syncTournament(client, t));
     } catch (error) {
       console.error(`Tournament sync for "${t.name}" failed:`, error);
     }
@@ -780,8 +773,10 @@ async function sync(client: Client): Promise<void> {
     where t.status <> 'finished' and t.captain_role_id is not null
       and r.has_captain_role <> (r.role = 'captain' and r.removed_at is null)`;
   for (const row of roleChanges) {
-    const guild = await guildFor(client, row.t);
-    if (guild) await syncCaptainRole(guild, row.t.captain_role_id!, row, row.wants);
+    await withTimeout(`Captain role for ${row.discord_id}`, (async () => {
+      const guild = await guildFor(client, row.t);
+      if (guild) await syncCaptainRole(guild, row.t.captain_role_id!, row, row.wants);
+    })());
   }
 
   const pendingQrs = await sql!<(Registration & { t: Tournament })[]>`
@@ -789,15 +784,26 @@ async function sync(client: Client): Promise<void> {
     from registration r join tournament t on t.id = r.tournament_id
     where t.status <> 'finished' and t.entry_fee_czk is not null
       and r.payment_status = 'unpaid' and r.qr_sent_at is null and r.removed_at is null`;
-  for (const row of pendingQrs) await deliverQr(client, row.t, row);
+  for (const row of pendingQrs) await withTimeout(`Payment QR for ${row.discord_id}`, deliverQr(client, row.t, row));
 
   const confirmed = await sql!<(Registration & { t: Tournament })[]>`
     select r.*, to_jsonb(t) as t
     from registration r join tournament t on t.id = r.tournament_id
     where r.payment_status = 'paid' and r.paid_notified_at is null and r.removed_at is null`;
-  for (const row of confirmed) await deliverPaidNote(client, row.t, row);
+  for (const row of confirmed) await withTimeout(`Payment note for ${row.discord_id}`, deliverPaidNote(client, row.t, row));
 
-  await syncTeamSearches(client).catch((error: unknown) => console.error('Team search sync failed:', error));
+  await withTimeout('Team search posts', syncTeamSearches(client)).catch((error: unknown) => console.error('Team search sync failed:', error));
+}
+
+/** One tournament's cards: post the missing ones, bring the rest up to date - or retire them. */
+async function syncTournament(client: Client, t: Tournament): Promise<void> {
+  const posts = await postsOf(t.id);
+  if (t.status === 'finished') return archive(client, t, posts);
+  // A card for each community it was announced in - new ones only while sign-ups are open.
+  if (t.status === 'open') {
+    for (const post of posts) if (!post.message_id) await publish(client, t, post);
+  }
+  await refreshCard(client, t, await countRoles(sql!, t.id), posts);
 }
 
 if (enabled) {

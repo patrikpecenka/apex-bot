@@ -6,7 +6,15 @@ import { databaseUrl } from './config.ts';
  * `prepare: false` keeps it working through Supabase's transaction pooler.
  * Null when DATABASE_URL is not set - those features stay off.
  */
-export const sql = databaseUrl ? postgres(databaseUrl, { prepare: false, max: 3, onnotice: () => {} }) : null;
+export const sql = databaseUrl ? postgres(databaseUrl, {
+      prepare: false,
+      max: 3,
+      // Idle connections go after 20 s rather than linger until the pooler drops
+      // them silently; a new one that cannot connect in 10 s is an error, not a wait.
+      idle_timeout: 20,
+      connect_timeout: 10,
+      onnotice: () => {},
+    }) : null;
 
 const loginPauseMs = 5 * 60_000;
 let pausedUntil = 0;

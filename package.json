@@ -16,7 +16,7 @@
     "deploy": "node --experimental-strip-types --env-file-if-exists=.env src/deploy-commands.ts",
     "deploy:test": "node --experimental-strip-types --env-file-if-exists=.env.test src/deploy-commands.ts",
     "typecheck": "tsc --noEmit",
-    "check": "node --experimental-strip-types src/paymentQr.check.ts"
+    "check": "node --experimental-strip-types src/paymentQr.check.ts && node --experimental-strip-types src/liveMessages.check.ts"
   },
   "dependencies": {
     "@napi-rs/canvas": "^1.0.5",

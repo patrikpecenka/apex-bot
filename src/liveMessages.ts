@@ -36,6 +36,26 @@ const stalledMs = 5 * 60_000;
 
 const tasks: Task[] = [];
 
+/**
+ * One piece of a task's work, given up on after `ms`: a request that never
+ * answers then costs that one piece, not the whole task. The abandoned promise
+ * may still finish later; its result is ignored. The log names what hung.
+ */
+export async function withTimeout<T>(what: string, work: Promise<T>, ms = 60_000): Promise<T | undefined> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<undefined>((resolve) => {
+    timer = setTimeout(() => {
+      console.warn(`${what}: no answer after ${ms / 1000} s - skipped, tried again next run.`);
+      resolve(undefined);
+    }, ms);
+  });
+  try {
+    return await Promise.race([work, timeout]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 /** A recurring background job. Runs once at startup, then every intervalMs. */
 export function registerTask(options: {
   name: string;

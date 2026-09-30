@@ -53,6 +53,13 @@ registerLiveMessage({
   render: async () => buildMapRotationMessage(await fetchMapRotation(), Date.now()),
 });
 
+// Discord.js waits out rate limits silently; a long wait looks exactly like a hang.
+client.rest.on('rateLimited', (info) => {
+  if (info.timeToReset >= 5_000) {
+    console.warn(`Discord rate limit: ${info.method} ${info.route} - waiting ${Math.round(info.timeToReset / 1000)} s (${info.global ? 'global' : 'this route'}).`);
+  }
+});
+
 client.once(Events.ClientReady, async (readyClient) => {
   console.log(`Logged in as ${readyClient.user.tag}`);
   console.log(`In ${readyClient.guilds.cache.size} server(s):`);
