@@ -589,21 +589,27 @@ async function refreshCard(client: Client, t: Tournament, counts: RoleCounts, po
     if (renderedCards.get(post.id) === key) continue;
 
     const channel = await client.channels.fetch(post.channel_id).catch(() => null);
-    const message = channel?.isTextBased() ? await channel.messages.fetch(post.message_id).catch(() => null) : null;
-    if (!message) {
+    if (!channel?.isTextBased()) {
       // Said on the desk rather than skipped quietly - otherwise the card just stops updating.
-      await postFailed(t, post, 'Kartu na Discordu nejde načíst – je smazaná, nebo bot v kanálu nemá „Číst historii zpráv“.');
+      await postFailed(t, post, 'Kanál s kartou neexistuje, nebo do něj bot nevidí.');
       continue;
     }
     try {
-      await message.edit(payload);
-      if (post.error) await sql!`update tournament_post set error = null where id = ${post.id}`;
+      // Edited by id: no fetch first, so it needs no "Read message history" in the channel.
+      await channel.messages.edit(post.message_id, payload);
+      renderedCards.set(post.id, key);
+      if (post.error) {
+        await sql!`update tournament_post set error = null where id = ${post.id}`;
+        post.error = null;
+      }
     } catch (error) {
-      // Discord refused the organizer's edit (a broken image link, say): the old card stays, the desk says why.
       await postFailed(t, post, error instanceof Error ? error.message : 'Úprava selhala.');
+      // Refused by Discord (a broken image link, a deleted card): the old card stays until
+      // the organizer changes something. Anything else - a network blip, Discord having a
+      // bad moment, a rate limit - is tried again next tick, or the edit would be lost.
+      const status = (error as { status?: number }).status ?? 0;
+      if (status >= 400 && status < 500 && status !== 429) renderedCards.set(post.id, key);
     }
-    // Either way not retried until the card changes again.
-    renderedCards.set(post.id, key);
   }
 }
 
