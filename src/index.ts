@@ -30,6 +30,10 @@ if (welcomeDmEnabled) intents.push(GatewayIntentBits.GuildMembers);
 
 const client = new Client({
   intents,
+  // discord.js gives up on a request after 15 s and sends it again. Discord can take
+  // longer on a card edit (it loads the card's pictures first), so every try was cut
+  // off - and some still landed. A minute lets the slow ones finish.
+  rest: { timeout: 60_000 },
   // Reaction events on messages posted before the last restart arrive partial;
   // without these the rank picker would only work until the bot restarts.
   partials: [Partials.Message, Partials.Channel, Partials.Reaction, Partials.User],
