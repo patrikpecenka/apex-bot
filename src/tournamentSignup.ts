@@ -602,8 +602,18 @@ async function refreshCard(client: Client, t: Tournament, counts: RoleCounts, po
     try {
       editsInFlight.add(post.id);
       // Edited by id: no fetch first, so it needs no "Read message history" in the channel.
+      const started = Date.now();
       const edit = channel.messages.edit(post.message_id, payload).finally(() => editsInFlight.delete(post.id));
-      const edited = await withTimeout(`"${t.name}" card ${post.id}: Discord editing the message`, edit, 45_000);
+      // An edit that outlives the wait below still ends somehow - say how, and after how long.
+      const late = (outcome: string) => {
+        const seconds = Math.round((Date.now() - started) / 1000);
+        if (seconds >= 90) console.warn(`"${t.name}" card ${post.id}: the edit Discord was slow with ended after ${seconds} s: ${outcome}`);
+      };
+      edit.then(
+        () => late('done'),
+        (error: unknown) => late(error instanceof Error ? `${error.name}: ${error.message}` : String(error)),
+      );
+      const edited = await withTimeout(`"${t.name}" card ${post.id}: Discord editing the message`, edit, 90_000);
       if (!edited) continue; // Still with Discord - its result is ignored, the next run sends a fresh one.
       renderedCards.set(post.id, key);
       if (post.error) {
@@ -769,7 +779,7 @@ async function sync(client: Client): Promise<void> {
   for (const t of tournaments) {
     try {
       // Longer than its steps together, so the step that hung is the one named in the log.
-      await withTimeout(`Card of "${t.name}"`, syncTournament(client, t), 120_000);
+      await withTimeout(`Card of "${t.name}"`, syncTournament(client, t), 150_000);
     } catch (error) {
       console.error(`Tournament sync for "${t.name}" failed:`, error);
     }
