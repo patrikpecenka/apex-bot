@@ -54,7 +54,7 @@ registerLiveMessage({
     all: allMapRotationMessages,
     remove: clearMapRotationMessage,
   },
-  render: async () => buildMapRotationMessage(await fetchMapRotation(), Date.now()),
+  render: async () => ({ ...await buildMapRotationMessage(await fetchMapRotation(), Date.now()), attachments: [] }),
 });
 
 // Discord.js waits out rate limits silently; a long wait looks exactly like a hang.

@@ -1,5 +1,6 @@
 import { AttachmentBuilder, EmbedBuilder } from 'discord.js';
-import { createCanvas, GlobalFonts, loadImage, type Image, type SKRSContext2D } from '@napi-rs/canvas';
+import type { Image, SKRSContext2D } from '@napi-rs/canvas';
+import { fork } from 'node:child_process';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { apexApiKey } from './config.ts';
@@ -99,16 +100,17 @@ const modes = Object.keys(modeLabels) as RotationMode[];
 
 const assetsDir = join(dirname(fileURLToPath(import.meta.url)), 'assets');
 
-// PebbleHost's container has no system fonts installed, so text would fail
-// to render (or fall back to nothing) without bundling and registering one.
-//
-// This runs at import time, before any error handler in index.ts is attached,
-// so an unreadable font file would kill the process at startup with no log.
-// A missing font should cost us the rotation card, not the whole bot.
-try {
-  GlobalFonts.registerFromPath(join(assetsDir, 'fonts', 'BebasNeue-Regular.ttf'), 'Bebas Neue');
-} catch (error) {
-  console.error('Failed to register the map rotation font; cards will render without it:', error);
+// Loaded only in the renderer child. A native crash must not exit the bot.
+let canvasModule: typeof import('@napi-rs/canvas') | null = null;
+
+async function loadCanvas(): Promise<void> {
+  if (canvasModule) return;
+  canvasModule = await import('@napi-rs/canvas');
+  try {
+    canvasModule.GlobalFonts.registerFromPath(join(assetsDir, 'fonts', 'BebasNeue-Regular.ttf'), 'Bebas Neue');
+  } catch (error) {
+    console.error('Failed to register the map rotation font; cards will render without it:', error);
+  }
 }
 
 const mapImageFiles: Record<string, string> = {
@@ -126,18 +128,21 @@ function normalizeMapName(name: string): string {
 
 // Decoded images are reused across panels/renders within the process — the
 // same map often appears more than once across separate mode cards.
-const imageCache = new Map<string, Promise<Image>>();
+const imageCache = new Map<string, Promise<Image | null>>();
 
 /** Prefers our bundled art (consistent style, no network dependency); falls
  * back to the API's own splash art URL for maps we don't have locally. */
-function getMapImage(mapName: string, assetUrl?: string): Promise<Image> | null {
+function getMapImage(mapName: string, assetUrl?: string): Promise<Image | null> | null {
   const localFile = mapImageFiles[normalizeMapName(mapName)];
   const source = localFile ? join(assetsDir, localFile) : assetUrl || null;
   if (!source) return null;
 
   let promise = imageCache.get(source);
   if (!promise) {
-    promise = loadImage(source);
+    promise = canvasModule!.loadImage(source).catch((error: unknown) => {
+      console.warn(`Map image unavailable for ${mapName}:`, error);
+      return null;
+    });
     imageCache.set(source, promise);
   }
   return promise;
@@ -251,7 +256,7 @@ async function drawNextStrip(ctx: SKRSContext2D, y: number, next: MapWindow): Pr
 }
 
 async function renderModeCard(label: string, period: MapPeriod, nowMs: number): Promise<Buffer> {
-  const canvas = createCanvas(CARD_W, CARD_H);
+  const canvas = canvasModule!.createCanvas(CARD_W, CARD_H);
   const ctx = canvas.getContext('2d');
   ctx.fillStyle = '#0b0e14';
   ctx.fillRect(0, 0, CARD_W, CARD_H);
@@ -308,7 +313,8 @@ export type RenderedMapRotation = {
   files: AttachmentBuilder[];
 };
 
-export async function buildMapRotationMessage(data: MapRotationData, nowMs: number): Promise<RenderedMapRotation> {
+export async function buildMapRotationMessageUnsafe(data: MapRotationData, nowMs: number): Promise<RenderedMapRotation> {
+  await loadCanvas();
   const embeds: EmbedBuilder[] = [];
   const files: AttachmentBuilder[] = [];
 
@@ -329,4 +335,84 @@ export async function buildMapRotationMessage(data: MapRotationData, nowMs: numb
   }
 
   return { embeds, files };
+}
+
+
+// Skip the image that crashed native rendering; try images again when the rotation changes.
+let rendererDisabledFor: string | null = null;
+
+function renderKey(data: MapRotationData): string {
+  return JSON.stringify(modes.map((mode) => {
+    const period = data?.[mode];
+    return [period?.current?.map, period?.current?.asset, period?.current?.start, period?.current?.end,
+      period?.next?.map, period?.next?.asset, period?.next?.start, period?.next?.end];
+  }));
+}
+
+type RendererReply = {
+  embeds: ReturnType<EmbedBuilder['toJSON']>[];
+  files: { name: string; image: string }[];
+};
+
+function renderInChild(data: MapRotationData, nowMs: number): Promise<RendererReply> {
+  return new Promise((resolve, reject) => {
+    const child = fork(fileURLToPath(new URL('./mapRotationWorker.ts', import.meta.url)), [], {
+      execArgv: ['--experimental-strip-types'],
+      stdio: ['ignore', 'inherit', 'inherit', 'ipc'],
+    });
+    let settled = false;
+    const timer = setTimeout(() => {
+      rendererDisabledFor = renderKey(data);
+      child.kill('SIGKILL');
+      finish(new Error('map renderer timed out after 30 seconds'));
+    }, 30_000);
+    function finish(error?: Error, reply?: RendererReply): void {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      if (child.connected) child.disconnect();
+      if (error) reject(error);
+      else resolve(reply!);
+    }
+    child.once('error', (error) => finish(error));
+    child.once('exit', (code, signal) => {
+      if (signal || code !== 0) rendererDisabledFor = renderKey(data);
+      finish(new Error(`map renderer exited: ${signal ?? code}`));
+    });
+    child.once('message', (message: RendererReply | { error: string } | null) => {
+      if (!message) finish(new Error('map renderer sent no result'));
+      else if ('error' in message) finish(new Error(message.error));
+      else finish(undefined, message);
+    });
+    child.send({ data, nowMs }, (error) => { if (error) finish(error); });
+  });
+}
+
+function textFallback(data: MapRotationData): RenderedMapRotation {
+  const lines = modes.flatMap((mode) => {
+    const period = data?.[mode];
+    if (!period?.current || !period.next) return [];
+    const name = (value: unknown) => typeof value === 'string' && value.trim() ? value.slice(0, 100) : 'Unknown map';
+    return [`**${modeLabels[mode]}:** ${name(period.current.map)} → ${name(period.next.map)}`];
+  });
+  return {
+    embeds: [new EmbedBuilder().setColor(mapRotationEmbedColor)
+      .setTitle('Map rotation')
+      .setDescription(lines.join('\n') || 'Map rotation data is temporarily unavailable.')],
+    files: [],
+  };
+}
+
+export async function buildMapRotationMessage(data: MapRotationData, nowMs: number): Promise<RenderedMapRotation> {
+  if (rendererDisabledFor === renderKey(data)) return textFallback(data);
+  try {
+    const rendered = await renderInChild(data, nowMs);
+    return {
+      embeds: rendered.embeds.map((embed) => new EmbedBuilder(embed)),
+      files: rendered.files.map(({ name, image }) => new AttachmentBuilder(Buffer.from(image, 'base64'), { name })),
+    };
+  } catch (error) {
+    console.error('Map rotation image render failed; using text:', error);
+    return textFallback(data);
+  }
 }
