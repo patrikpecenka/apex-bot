@@ -22,10 +22,11 @@
  *   - the organizer's lobby code, DMed to every player with a team, with the
  *     slot their team takes in the custom lobby.
  */
-import { AttachmentBuilder, EmbedBuilder, type Client, type GuildTextBasedChannel } from 'discord.js';
+import { ActionRowBuilder, AttachmentBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, type Client, type GuildTextBasedChannel } from 'discord.js';
 import { siteUrl } from './config.ts';
 import { sql } from './db.ts';
 import { registerTask } from './liveMessages.ts';
+import { markTold, roomLink, syncTeamRooms, waitsForRoom } from './teamRooms.ts';
 
 const EMBER = 0xff6a1f;
 const site = (t: { site_url: string | null }) => (t.site_url || siteUrl).replace(/\/$/, '');
@@ -48,21 +49,27 @@ type Posted = { channel_id: string; message_id: string };
  * ping only works where the bot may mention everyone (the server card shows
  * it); without that the post still goes out, just quietly. Returns what it posted.
  */
-async function announce(client: Client, t: { id: string; name: string }, text: string): Promise<Posted[]> {
-  const posts = await sql!<{ channel_id: string }[]>`
-    select coalesce(c.reminder_channel_id, p.channel_id) as channel_id
+async function announce(
+  client: Client,
+  t: { id: string; name: string },
+  /** Text, or text per channel - told where that server posts the results. */
+  text: string | ((where: { channel_id: string; results_channel_id: string }) => string),
+): Promise<Posted[]> {
+  const posts = await sql!<{ channel_id: string; results_channel_id: string }[]>`
+    select coalesce(c.reminder_channel_id, p.channel_id) as channel_id, coalesce(c.results_channel_id, p.channel_id) as results_channel_id
     from tournament_post p left join community c on c.id = p.community_id
     where p.tournament_id = ${t.id} and p.message_id is not null
     order by p.id`;
   const sent: Posted[] = [];
   for (const channelId of new Set(posts.map((p) => p.channel_id))) {
+    const body = typeof text === 'string' ? text : text(posts.find((p) => p.channel_id === channelId)!);
     const channel = await textChannel(client, channelId);
     if (!channel) {
       console.warn(`"${t.name}": channel ${channelId} is gone or not writable.`);
       continue;
     }
     const message = await channel
-      .send({ content: `@everyone ${text}`, allowedMentions: { parse: ['everyone'] } })
+      .send({ content: `@everyone ${body}`, allowedMentions: { parse: ['everyone'] } })
       .catch(logged(`"${t.name}" in ${channelId}`));
     if (message) sent.push({ channel_id: channelId, message_id: message.id });
   }
@@ -140,8 +147,8 @@ async function startTournaments(client: Client): Promise<void> {
   }
 
   // The start notice: once, to the reminder channel - whether the bot started it or the organizer did.
-  const live = await sql!<{ id: string; name: string; site_url: string | null; reminder_messages: Posted[] | null }[]>`
-    select id, name, site_url, reminder_messages from tournament
+  const live = await sql!<{ id: string; name: string; site_url: string | null; reminder_messages: Posted[] | null; results: boolean }[]>`
+    select id, name, site_url, reminder_messages, coalesce((config->>'results')::boolean, false) as results from tournament
     where status = 'live' and visibility = 'public' and started_notified_at is null
       and (config->>'reminder')::boolean is true
       and (starts_at is null or starts_at > (now() at time zone 'UTC') - interval '2 hours')`;
@@ -150,14 +157,16 @@ async function startTournaments(client: Client): Promise<void> {
     if (!claimed) continue;
     // "Starts in 30 minutes" is out of date now - it makes way for "it's starting".
     await removePosts(client, t.reminder_messages ?? []);
-    await announce(
-      client,
-      t,
-      [
-        `🔴 **${t.name}** právě začíná! Tvůj tým a kód do lobby ti pošlu do DM, jakmile je organizátor zadá.`,
-        `Průběžné výsledky: ${site(t)}/tournament/${t.id}`,
-      ].join('\n'),
-    );
+    const page = `${site(t)}/tournament/${t.id}`;
+    await announce(client, t, (where) => {
+      // Where this server gets the results after each match: here, or its own results channel.
+      const after = !t.results
+        ? ''
+        : where.results_channel_id === where.channel_id
+          ? ' nebo tady po každém zápasu'
+          : ` nebo v <#${where.results_channel_id}> po každém zápasu`;
+      return [`🔴 **${t.name}** právě začíná!`, `Průběžné výsledky: ${page}${after}`].join('\n');
+    });
   }
 }
 
@@ -202,8 +211,8 @@ async function checkMembership(client: Client): Promise<void> {
  * marked so the website can show it, and not retried.
  */
 async function sendLobbyCodes(client: Client): Promise<void> {
-  const due = await sql!<{ id: string; discord_id: string; name: string; code: string; team: string; slot: number; site_url: string | null; tournament_id: string }[]>`
-    select r.id, r.discord_id, t.name, t.lobby_code as code, tm.name as team, t.site_url, t.id as tournament_id,
+  const due = await sql!<{ id: string; discord_id: string; name: string; code: string; team: string; slot: number; site_url: string | null; tournament_id: string; team_id: string }[]>`
+    select r.id, r.discord_id, t.name, t.lobby_code as code, tm.name as team, t.site_url, t.id as tournament_id, tm.id as team_id,
       (select x.slot from (
         select m.id, row_number() over (order by m.display_order, m.created_at)::int as slot
         from team m where m.tournament_id = t.id and not m.is_substitute) x where x.id = tm.id) as slot
@@ -215,16 +224,30 @@ async function sendLobbyCodes(client: Client): Promise<void> {
       and r.lobby_code_sent is distinct from t.lobby_code and r.lobby_code_sent is distinct from 'failed:' || t.lobby_code
     limit 40`;
   for (const row of due) {
-    const text = [
-      `🎮 **${row.name}** – hraješ za tým **${row.team}**.`,
-      `V custom lobby se přidej do **Team ${row.slot}**.`,
-      `Kód do lobby: **\`${row.code}\`**`,
-      'Kód nikomu dalšímu neposílej – každý hráč ho má od bota sám.',
-      `Turnaj: ${site(row)}/tournament/${row.tournament_id}`,
-    ].join('\n');
+    const room = await roomLink(row.tournament_id, row.team_id);
+    // The room is on its way (made in the round before this, a few rooms at a time): code and link go together.
+    if (!room && waitsForRoom(row.tournament_id, row.team_id)) continue;
+    const page = `${site(row)}/tournament/${row.tournament_id}`;
+    const embed = new EmbedBuilder()
+      .setColor(EMBER)
+      .setTitle(row.name)
+      .setURL(page)
+      .setDescription('Lobby je připravené. Tady máš svůj tým, slot a kód.')
+      .addFields(
+        { name: 'Tvůj tým', value: row.team, inline: true },
+        { name: 'Slot v lobby', value: `Team ${row.slot}`, inline: true },
+        // A spoiler: the code shows on a click, so a DM open on stream doesn't give it away.
+        { name: 'Kód do lobby', value: `||\`${row.code}\`||  · klikni pro zobrazení` },
+      )
+      .setFooter({ text: 'Kód nikomu neposílej a nedávej ho do streamu.' });
+    const buttons = new ActionRowBuilder<ButtonBuilder>().addComponents(
+      ...(room ? [new ButtonBuilder().setStyle(ButtonStyle.Link).setLabel('Připojit se do voice').setEmoji('🔊').setURL(room)] : []),
+      new ButtonBuilder().setStyle(ButtonStyle.Link).setLabel('Stránka turnaje').setURL(page),
+    );
     const user = await client.users.fetch(row.discord_id).catch(() => null);
-    const sent = user ? await user.send(text).then(() => true).catch(() => false) : false;
+    const sent = user ? await user.send({ embeds: [embed], components: [buttons] }).then(() => true).catch(() => false) : false;
     await sql!`update registration set lobby_code_sent = ${sent ? row.code : `failed:${row.code}`} where id = ${row.id}`;
+    if (sent && room) await markTold(row.tournament_id, row.team_id, row.discord_id);
   }
 }
 
@@ -350,6 +373,8 @@ if (sql) {
       await sendReminders(client).catch(logged('Tournament reminders'));
       await sendResults(client).catch(logged('Tournament results'));
       await checkMembership(client).catch(logged('Server membership check'));
+      // Rooms first: the lobby-code DM links to the team's room.
+      await syncTeamRooms(client);
       await sendLobbyCodes(client).catch(logged('Lobby codes'));
     },
     database: true,
