@@ -49,21 +49,27 @@ type Posted = { channel_id: string; message_id: string };
  * ping only works where the bot may mention everyone (the server card shows
  * it); without that the post still goes out, just quietly. Returns what it posted.
  */
-async function announce(client: Client, t: { id: string; name: string }, text: string): Promise<Posted[]> {
-  const posts = await sql!<{ channel_id: string }[]>`
-    select coalesce(c.reminder_channel_id, p.channel_id) as channel_id
+async function announce(
+  client: Client,
+  t: { id: string; name: string },
+  /** Text, or text per channel - told where that server posts the results. */
+  text: string | ((where: { channel_id: string; results_channel_id: string }) => string),
+): Promise<Posted[]> {
+  const posts = await sql!<{ channel_id: string; results_channel_id: string }[]>`
+    select coalesce(c.reminder_channel_id, p.channel_id) as channel_id, coalesce(c.results_channel_id, p.channel_id) as results_channel_id
     from tournament_post p left join community c on c.id = p.community_id
     where p.tournament_id = ${t.id} and p.message_id is not null
     order by p.id`;
   const sent: Posted[] = [];
   for (const channelId of new Set(posts.map((p) => p.channel_id))) {
+    const body = typeof text === 'string' ? text : text(posts.find((p) => p.channel_id === channelId)!);
     const channel = await textChannel(client, channelId);
     if (!channel) {
       console.warn(`"${t.name}": channel ${channelId} is gone or not writable.`);
       continue;
     }
     const message = await channel
-      .send({ content: `@everyone ${text}`, allowedMentions: { parse: ['everyone'] } })
+      .send({ content: `@everyone ${body}`, allowedMentions: { parse: ['everyone'] } })
       .catch(logged(`"${t.name}" in ${channelId}`));
     if (message) sent.push({ channel_id: channelId, message_id: message.id });
   }
@@ -141,8 +147,8 @@ async function startTournaments(client: Client): Promise<void> {
   }
 
   // The start notice: once, to the reminder channel - whether the bot started it or the organizer did.
-  const live = await sql!<{ id: string; name: string; site_url: string | null; reminder_messages: Posted[] | null }[]>`
-    select id, name, site_url, reminder_messages from tournament
+  const live = await sql!<{ id: string; name: string; site_url: string | null; reminder_messages: Posted[] | null; results: boolean }[]>`
+    select id, name, site_url, reminder_messages, coalesce((config->>'results')::boolean, false) as results from tournament
     where status = 'live' and visibility = 'public' and started_notified_at is null
       and (config->>'reminder')::boolean is true
       and (starts_at is null or starts_at > (now() at time zone 'UTC') - interval '2 hours')`;
@@ -151,14 +157,16 @@ async function startTournaments(client: Client): Promise<void> {
     if (!claimed) continue;
     // "Starts in 30 minutes" is out of date now - it makes way for "it's starting".
     await removePosts(client, t.reminder_messages ?? []);
-    await announce(
-      client,
-      t,
-      [
-        `🔴 **${t.name}** právě začíná! Tvůj tým a kód do lobby ti pošlu do DM, jakmile je organizátor zadá.`,
-        `Průběžné výsledky: ${site(t)}/tournament/${t.id}`,
-      ].join('\n'),
-    );
+    const page = `${site(t)}/tournament/${t.id}`;
+    await announce(client, t, (where) => {
+      // Where this server gets the results after each match: here, or its own results channel.
+      const after = !t.results
+        ? ''
+        : where.results_channel_id === where.channel_id
+          ? ' nebo tady po každém zápasu'
+          : ` nebo v <#${where.results_channel_id}> po každém zápasu`;
+      return [`🔴 **${t.name}** právě začíná!`, `Průběžné výsledky: ${page}${after}`].join('\n');
+    });
   }
 }
 
