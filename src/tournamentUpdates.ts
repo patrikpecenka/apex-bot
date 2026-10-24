@@ -22,7 +22,7 @@
  *   - the organizer's lobby code, DMed to every player with a team, with the
  *     slot their team takes in the custom lobby.
  */
-import { ActionRowBuilder, AttachmentBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, type Client, type GuildTextBasedChannel } from 'discord.js';
+import { ActionRowBuilder, AttachmentBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, Events, type Client, type GuildTextBasedChannel } from 'discord.js';
 import { siteUrl } from './config.ts';
 import { sql } from './db.ts';
 import { registerTask } from './liveMessages.ts';
@@ -173,6 +173,20 @@ async function startTournaments(client: Client): Promise<void> {
 // --- who is on the server ------------------------------------------------------------
 
 /**
+ * Someone joining a server is looked at again on the next round, not in up to
+ * two minutes - their room and lobby-code DM are waiting. Only fires where the
+ * bot gets join events (the GuildMembers intent, on with the welcome DM);
+ * without it the 30-second check below still finds them.
+ */
+export function watchJoins(client: Client): void {
+  if (!sql) return;
+  client.on(Events.GuildMemberAdd, (member) => {
+    sql!`update registration set server_checked_at = null
+      where discord_id = ${member.id} and removed_at is null and on_server is not true`.catch(logged(`Join of ${member.id}`));
+  });
+}
+
+/**
  * Whether each signed-up player is on (one of) the servers the tournament was
  * announced in. The bot can only DM people it shares a server with, so the
  * website warns anyone who is not. Unknown players are checked soon; those on
@@ -186,7 +200,11 @@ async function checkMembership(client: Client): Promise<void> {
     join tournament_post p on p.tournament_id = t.id and p.message_id is not null and p.guild_id is not null
     where r.removed_at is null and r.discord_id ~ '^[0-9]+$'
       and (r.server_checked_at is null
-        or r.server_checked_at < (now() at time zone 'UTC') - case when r.on_server then interval '30 minutes' else interval '2 minutes' end)
+        or r.server_checked_at < (now() at time zone 'UTC') - case
+          when r.on_server then interval '30 minutes'
+          -- On a team with the code already out: they are wanted in the lobby and their room, look every round.
+          when r.team_id is not null and t.lobby_code is not null then interval '25 seconds'
+          else interval '2 minutes' end)
     group by r.id
     limit 50`;
   for (const row of due) {
@@ -198,7 +216,10 @@ async function checkMembership(client: Client): Promise<void> {
         break;
       }
     }
-    await sql!`update registration set on_server = ${on}, server_checked_at = now() where id = ${row.id}`;
+    // Just arrived: the lobby-code DM that could not reach them goes out again (with their room), next round.
+    await sql!`update registration set on_server = ${on}, server_checked_at = now(),
+      lobby_code_sent = case when ${on} and on_server is not true and lobby_code_sent like 'failed:%' then null else lobby_code_sent end
+      where id = ${row.id}`;
   }
 }
 
