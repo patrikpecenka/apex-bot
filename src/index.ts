@@ -14,7 +14,7 @@ import { registerServerSync } from './discordServers.ts';
 import './predator.ts';
 // Same for tournament sign-ups (a no-op unless DATABASE_URL is set).
 import './tournamentSignup.ts';
-import './tournamentUpdates.ts';
+import { watchJoins } from './tournamentUpdates.ts';
 import './retention.ts';
 
 // Guilds is enough to see servers and their channels. Reading message text
@@ -44,6 +44,8 @@ if (anyVoiceHubs) registerTempVoice(client);
 if (welcomeDmEnabled) registerWelcomeDm(client);
 // Which servers the bot is in and where it may post (a no-op unless DATABASE_URL is set).
 registerServerSync(client);
+// A player joining the tournament's server gets their room and lobby DM on the next round.
+watchJoins(client);
 
 // The map rotation's own live message. Everything else that ticks registers
 // itself from its own module.
