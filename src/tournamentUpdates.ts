@@ -26,6 +26,7 @@ import { AttachmentBuilder, EmbedBuilder, type Client, type GuildTextBasedChanne
 import { siteUrl } from './config.ts';
 import { sql } from './db.ts';
 import { registerTask } from './liveMessages.ts';
+import { roomLink, syncTeamRooms } from './teamRooms.ts';
 
 const EMBER = 0xff6a1f;
 const site = (t: { site_url: string | null }) => (t.site_url || siteUrl).replace(/\/$/, '');
@@ -202,8 +203,8 @@ async function checkMembership(client: Client): Promise<void> {
  * marked so the website can show it, and not retried.
  */
 async function sendLobbyCodes(client: Client): Promise<void> {
-  const due = await sql!<{ id: string; discord_id: string; name: string; code: string; team: string; slot: number; site_url: string | null; tournament_id: string }[]>`
-    select r.id, r.discord_id, t.name, t.lobby_code as code, tm.name as team, t.site_url, t.id as tournament_id,
+  const due = await sql!<{ id: string; discord_id: string; name: string; code: string; team: string; slot: number; site_url: string | null; tournament_id: string; team_id: string }[]>`
+    select r.id, r.discord_id, t.name, t.lobby_code as code, tm.name as team, t.site_url, t.id as tournament_id, tm.id as team_id,
       (select x.slot from (
         select m.id, row_number() over (order by m.display_order, m.created_at)::int as slot
         from team m where m.tournament_id = t.id and not m.is_substitute) x where x.id = tm.id) as slot
@@ -215,10 +216,12 @@ async function sendLobbyCodes(client: Client): Promise<void> {
       and r.lobby_code_sent is distinct from t.lobby_code and r.lobby_code_sent is distinct from 'failed:' || t.lobby_code
     limit 40`;
   for (const row of due) {
+    const room = await roomLink(row.tournament_id, row.team_id);
     const text = [
       `🎮 **${row.name}** – hraješ za tým **${row.team}**.`,
       `V custom lobby se přidej do **Team ${row.slot}**.`,
       `Kód do lobby: **\`${row.code}\`**`,
+      ...(room ? [`🔊 Voice místnost tvého týmu: ${room}`] : []),
       'Kód nikomu dalšímu neposílej – každý hráč ho má od bota sám.',
       `Turnaj: ${site(row)}/tournament/${row.tournament_id}`,
     ].join('\n');
@@ -350,6 +353,8 @@ if (sql) {
       await sendReminders(client).catch(logged('Tournament reminders'));
       await sendResults(client).catch(logged('Tournament results'));
       await checkMembership(client).catch(logged('Server membership check'));
+      // Rooms first: the lobby-code DM links to the team's room.
+      await syncTeamRooms(client);
       await sendLobbyCodes(client).catch(logged('Lobby codes'));
     },
     database: true,
