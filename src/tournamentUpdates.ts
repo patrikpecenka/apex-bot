@@ -22,11 +22,11 @@
  *   - the organizer's lobby code, DMed to every player with a team, with the
  *     slot their team takes in the custom lobby.
  */
-import { AttachmentBuilder, EmbedBuilder, type Client, type GuildTextBasedChannel } from 'discord.js';
+import { ActionRowBuilder, AttachmentBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, type Client, type GuildTextBasedChannel } from 'discord.js';
 import { siteUrl } from './config.ts';
 import { sql } from './db.ts';
 import { registerTask } from './liveMessages.ts';
-import { roomLink, syncTeamRooms } from './teamRooms.ts';
+import { markTold, roomLink, syncTeamRooms, waitsForRoom } from './teamRooms.ts';
 
 const EMBER = 0xff6a1f;
 const site = (t: { site_url: string | null }) => (t.site_url || siteUrl).replace(/\/$/, '');
@@ -217,17 +217,29 @@ async function sendLobbyCodes(client: Client): Promise<void> {
     limit 40`;
   for (const row of due) {
     const room = await roomLink(row.tournament_id, row.team_id);
-    const text = [
-      `🎮 **${row.name}** – hraješ za tým **${row.team}**.`,
-      `V custom lobby se přidej do **Team ${row.slot}**.`,
-      `Kód do lobby: **\`${row.code}\`**`,
-      ...(room ? [`🔊 Voice místnost tvého týmu: ${room}`] : []),
-      'Kód nikomu dalšímu neposílej – každý hráč ho má od bota sám.',
-      `Turnaj: ${site(row)}/tournament/${row.tournament_id}`,
-    ].join('\n');
+    // The room is on its way (made in the round before this, a few rooms at a time): code and link go together.
+    if (!room && waitsForRoom(row.tournament_id, row.team_id)) continue;
+    const page = `${site(row)}/tournament/${row.tournament_id}`;
+    const embed = new EmbedBuilder()
+      .setColor(EMBER)
+      .setTitle(row.name)
+      .setURL(page)
+      .setDescription('Lobby je připravené. Tady máš svůj tým, slot a kód.')
+      .addFields(
+        { name: 'Tvůj tým', value: row.team, inline: true },
+        { name: 'Slot v lobby', value: `Team ${row.slot}`, inline: true },
+        // A spoiler: the code shows on a click, so a DM open on stream doesn't give it away.
+        { name: 'Kód do lobby', value: `||\`${row.code}\`||  · klikni pro zobrazení` },
+      )
+      .setFooter({ text: 'Kód nikomu neposílej a nedávej ho do streamu.' });
+    const buttons = new ActionRowBuilder<ButtonBuilder>().addComponents(
+      ...(room ? [new ButtonBuilder().setStyle(ButtonStyle.Link).setLabel('Připojit se do voice').setEmoji('🔊').setURL(room)] : []),
+      new ButtonBuilder().setStyle(ButtonStyle.Link).setLabel('Stránka turnaje').setURL(page),
+    );
     const user = await client.users.fetch(row.discord_id).catch(() => null);
-    const sent = user ? await user.send(text).then(() => true).catch(() => false) : false;
+    const sent = user ? await user.send({ embeds: [embed], components: [buttons] }).then(() => true).catch(() => false) : false;
     await sql!`update registration set lobby_code_sent = ${sent ? row.code : `failed:${row.code}`} where id = ${row.id}`;
+    if (sent && room) await markTold(row.tournament_id, row.team_id, row.discord_id);
   }
 }
 

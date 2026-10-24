@@ -17,11 +17,12 @@
  * Only players the bot has seen on that server are let in (registration.on_server);
  * anyone who joins later is added on the next round.
  */
-import { ChannelType, OverwriteType, PermissionFlagsBits, type Client, type Guild } from 'discord.js';
+import { ActionRowBuilder, ButtonBuilder, ButtonStyle, ChannelType, EmbedBuilder, OverwriteType, PermissionFlagsBits, type Client, type Guild } from 'discord.js';
 import { sql } from './db.ts';
 import { createJsonStore } from './jsonStore.ts';
 
-type Room = { channelId: string; name: string; members: string };
+/** `told`: players already DMed this room's link (with the code, or after it when the room came later). */
+type Room = { channelId: string; name: string; members: string; told?: string[] };
 type Rooms = {
   guildId: string;
   categoryId: string;
@@ -39,11 +40,28 @@ const required = [PermissionFlagsBits.ManageChannels, PermissionFlagsBits.MoveMe
 const warned = new Set<string>();
 const logged = (what: string) => (error: unknown) => console.error(`${what} failed:`, error);
 
+const linkOf = (entry: Rooms, room: Room) => `https://discord.com/channels/${entry.guildId}/${room.channelId}`;
+
 /** Link to a team's room for the lobby-code DM, if it has one. */
 export async function roomLink(tournamentId: string, teamId: string): Promise<string | null> {
   const entry = await store.get(tournamentId);
   const room = entry?.rooms[teamId];
-  return entry && room ? `https://discord.com/channels/${entry.guildId}/${room.channelId}` : null;
+  return entry && room ? linkOf(entry, room) : null;
+}
+
+/** Tournaments the bot could make rooms for in the last round: their lobby-code DM waits for the room. */
+const roomable = new Set<string>();
+/** Teams whose room could not be made: their DM goes without a link rather than waiting forever. */
+const roomless = new Set<string>();
+export const waitsForRoom = (tournamentId: string, teamId: string) => roomable.has(tournamentId) && !roomless.has(teamId);
+
+/** The lobby-code DM carried the room link: no follow-up needed. */
+export async function markTold(tournamentId: string, teamId: string, discordId: string): Promise<void> {
+  const entry = await store.get(tournamentId);
+  const room = entry?.rooms[teamId];
+  if (!entry || !room || room.told?.includes(discordId)) return;
+  room.told = [...(room.told ?? []), discordId];
+  await store.set(tournamentId, entry);
 }
 
 function canManage(guild: Guild, tournamentName: string): boolean {
@@ -69,8 +87,8 @@ function overwrites(guild: Guild, members: string[], organizer: string | null) {
 }
 
 async function sync(client: Client): Promise<void> {
-  const due = await sql!<{ id: string; name: string; team_size: number; guild_id: string | null; organizer: string | null }[]>`
-    select t.id, t.name, t.team_size,
+  const due = await sql!<{ id: string; name: string; team_size: number; lobby_code: string; guild_id: string | null; organizer: string | null }[]>`
+    select t.id, t.name, t.team_size, t.lobby_code,
       (select p.guild_id from tournament_post p where p.tournament_id = t.id and p.message_id is not null and p.guild_id is not null
         order by p.id limit 1) as guild_id,
       (select pl.discord_id from player pl where pl.user_id = t.created_by and pl.discord_id ~ '^[0-9]+$') as organizer
@@ -79,10 +97,15 @@ async function sync(client: Client): Promise<void> {
 
   for (const t of due) {
     const guild = t.guild_id ? client.guilds.cache.get(t.guild_id) : undefined;
-    if (!guild || !canManage(guild, t.name)) continue;
-    const teams = await sql!<{ id: string; name: string; slot: number; members: string[] }[]>`
+    if (!guild || !canManage(guild, t.name)) {
+      roomable.delete(t.id);
+      continue;
+    }
+    roomable.add(t.id);
+    const teams = await sql!<{ id: string; name: string; slot: number; members: string[]; sent: string[] }[]>`
       select tm.id, tm.name, row_number() over (order by tm.display_order, tm.created_at)::int as slot,
-        coalesce(array_agg(r.discord_id order by r.discord_id) filter (where r.id is not null), '{}') as members
+        coalesce(array_agg(r.discord_id order by r.discord_id) filter (where r.id is not null), '{}') as members,
+        coalesce(array_agg(r.discord_id) filter (where r.lobby_code_sent = ${t.lobby_code}), '{}') as sent
       from team tm
       left join registration r on r.team_id = tm.id and r.removed_at is null and r.role <> 'substitute'
         and r.discord_id ~ '^[0-9]+$' and r.on_server
@@ -101,8 +124,9 @@ async function sync(client: Client): Promise<void> {
       await store.set(t.id, entry);
     }
 
-    for (const team of teams) {
-      const name = (team.name === `Team ${team.slot}` ? `Team ${team.slot}` : `Team ${team.slot} · ${team.name}`).slice(0, 100);
+    // Teams with players to DM first: their DM waits for the room, the demo-only ones don't.
+    for (const team of [...teams].sort((a, b) => b.members.length - a.members.length)) {
+      const name =(team.name === `Team ${team.slot}` ? `Team ${team.slot}` : `Team ${team.slot} · ${team.name}`).slice(0, 100);
       const members = team.members.join(',');
       const known = entry.rooms[team.id];
       const channel = known ? await guild.channels.fetch(known.channelId).catch(() => null) : null;
@@ -115,15 +139,41 @@ async function sync(client: Client): Promise<void> {
             userLimit: Math.min(Math.max(t.team_size, 1), 99),
             permissionOverwrites: overwrites(guild, team.members, t.organizer),
           });
-          entry.rooms[team.id] = { channelId: created.id, name, members };
+          // A new room is a new link: nobody has had it yet.
+          entry.rooms[team.id] = { channelId: created.id, name, members, told: [] };
+          await store.set(t.id, entry); // remembered right away: a round cut short must not make it again
         } else if (known!.name !== name || known!.members !== members) {
           // Only on a change: renames and overwrite edits are rate-limited.
           if (known!.name !== name) await channel.setName(name);
           if (known!.members !== members) await channel.permissionOverwrites.set(overwrites(guild, team.members, t.organizer));
-          entry.rooms[team.id] = { channelId: channel.id, name, members };
+          entry.rooms[team.id] = { ...known!, channelId: channel.id, name, members };
         }
+        roomless.delete(team.id);
       } catch (error) {
+        roomless.add(team.id);
         logged(`Team room "${name}" of "${t.name}"`)(error);
+      }
+
+      // Players who got the code before their room existed get the link on its own.
+      const room = entry.rooms[team.id];
+      if (!room) continue;
+      for (const id of team.sent.filter((s) => team.members.includes(s) && !room.told?.includes(s))) {
+        const user = await client.users.fetch(id).catch(() => null);
+        const sent = await user
+          ?.send({
+            embeds: [new EmbedBuilder().setColor(0xff6a1f).setTitle(t.name).setDescription(`Voice místnost tvého týmu je připravená.
+
+**${name}**`)],
+            components: [
+              new ActionRowBuilder<ButtonBuilder>().addComponents(
+                new ButtonBuilder().setStyle(ButtonStyle.Link).setLabel('Připojit se do voice').setEmoji('🔊').setURL(linkOf(entry, room)),
+              ),
+            ],
+          })
+          .then(() => true, () => false);
+        // Delivered or not, once: a closed DM stays closed, and the lobby-code DM already said it failed.
+        room.told = [...(room.told ?? []), id];
+        if (!sent) console.warn(`Room link for ${id} in "${t.name}" could not be delivered.`);
       }
     }
 
