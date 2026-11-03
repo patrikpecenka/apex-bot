@@ -168,15 +168,14 @@ export async function execute(interaction: ChatInputCommandInteraction) {
   const anchor = highestSeasonRole(guild);
   const anchorPosition = anchor?.position ?? 0;
 
-  // Discord refuses to place a role at or above the bot's own highest role.
-  const ceiling = me.roles.highest.position;
-  if (anchorPosition + seasonTiers.length >= ceiling) {
+  // Discord refuses to place a role at or above the bot's own highest role. Positions have no
+  // gaps - a role created below the bot pushes the bot's role up - so the bot only has to sit
+  // above the season it stacks onto, not leave empty places for the new roles.
+  if (anchor && anchorPosition >= me.roles.highest.position) {
     await interaction.editReply(
       [
         `Moje nejvyšší role (**${me.roles.highest.name}**) je moc nízko na to, abych tyhle role umístil.`,
-        anchor
-          ? `Musí být nad **${anchor.name}** a mít nad sebou aspoň ${seasonTiers.length} volných míst.`
-          : `Musí mít nad sebou aspoň ${seasonTiers.length} volných míst.`,
+        `Musí být nad **${anchor.name}**.`,
         'Přetáhni moji roli výš v Nastavení serveru → Role a spusť to znovu.',
       ].join('\n'),
     );
