@@ -1,5 +1,6 @@
 import type { ChatInputCommandInteraction, SlashCommandBuilder } from 'discord.js';
-import { anyVoiceHubs } from '../config.ts';
+import { anyVoiceHubs, messageLoggerEnabled } from '../config.ts';
+import * as allowLogger from './allowLogger.ts';
 import * as season from './season.ts';
 import * as deleteSeason from './deleteSeason.ts';
 import * as mapRotation from './mapRotation.ts';
@@ -28,6 +29,7 @@ export const commands: Command[] = [
   // No hubs configured means no rooms exist to manage, so don't offer the
   // commands at all rather than have them always answer "you're not in a room".
   ...(anyVoiceHubs ? [room, join] : []),
+  ...(messageLoggerEnabled ? [allowLogger] : []),
 ];
 
 export const commandsByName = new Map(
