@@ -73,6 +73,12 @@ export const anyVoiceHubs = voiceHubIds.length + privateVoiceHubIds.length > 0;
 export const welcomeDmEnabled = process.env.WELCOME_DM === 'on';
 
 /**
+ * Off by default for the same reason: `/allow-logger` reads message text, which
+ * needs the privileged MessageContent intent ticked in the Developer Portal.
+ */
+export const messageLoggerEnabled = process.env.MESSAGE_LOGGER === 'on';
+
+/**
  * Master switch for the self-assign rank picker. Off for now: /season only
  * creates the roles, no embed is posted, and reactions hand out nothing.
  * Flip back to true (or set RANK_PICKER=on) to re-enable it.

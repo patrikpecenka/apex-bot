@@ -1,5 +1,6 @@
 import { Client, Events, GatewayIntentBits, MessageFlags, Partials } from 'discord.js';
-import { anyVoiceHubs, databaseUrl, rankPickerEnabled, token, welcomeDmEnabled } from './config.ts';
+import { anyVoiceHubs, databaseUrl, messageLoggerEnabled, rankPickerEnabled, token, welcomeDmEnabled } from './config.ts';
+import { registerMessageLogger } from './messageLogger.ts';
 import { commandsByName } from './commands/registry.ts';
 import { handleComponent } from './components/registry.ts';
 import { registerReactionRoles } from './reactionRoles.ts';
@@ -27,6 +28,7 @@ const intents = [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessageReactio
 // don't use is a needless event firehose.
 if (anyVoiceHubs) intents.push(GatewayIntentBits.GuildVoiceStates);
 if (welcomeDmEnabled) intents.push(GatewayIntentBits.GuildMembers);
+if (messageLoggerEnabled) intents.push(GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent);
 
 const client = new Client({
   intents,
@@ -42,6 +44,7 @@ const client = new Client({
 if (rankPickerEnabled) registerReactionRoles(client);
 if (anyVoiceHubs) registerTempVoice(client);
 if (welcomeDmEnabled) registerWelcomeDm(client);
+if (messageLoggerEnabled) registerMessageLogger(client);
 // Which servers the bot is in and where it may post (a no-op unless DATABASE_URL is set).
 registerServerSync(client);
 // A player joining the tournament's server gets their room and lobby DM on the next round.
